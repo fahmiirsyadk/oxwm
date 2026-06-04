@@ -1,0 +1,22 @@
+XCOMM Imakefile for OXWM sample rc
+XCOMM
+XCOMM OXWM is a fork of MLVWM. All credit for the original codebase
+XCOMM belongs to TakaC HASEGAWA and the MLVWM contributors.
+XCOMM See ../NOTICE for the full credit history.
+
+#include "../configure.h"
+
+XCOMM Do not change from here !
+
+all::
+#if InstallSampleRC
+             SRC_CONFIG = Oxwmrc
+
+                SAMPLES = Oxwmrc-Xterm \
+                          Oxwmrc-Kterm-j \
+                          Oxwmrc-Netscape \
+                          Oxwmrc-j
+
+InstallNamedNonExec($(SRC_CONFIG),system$(OXWMRC),$(OXWMLIBDIR))
+InstallMultiple($(SAMPLES),$(OXWMLIBDIR))
+#endif

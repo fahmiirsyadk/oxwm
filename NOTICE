@@ -1,0 +1,39 @@
+OXWM — Credit & Provenance Notice
+=================================
+
+OXWM is a fork of MLVWM (Macintosh Like Virtual Window Manager), which
+is itself based on FVWM (which is itself descended from Twm). All credit
+for the original code and design belongs to the original authors and
+contributors listed below. The OXWM fork adds a desktop icon manager
+(`oxwm-desktop`), hotfixes, and modern system compatibility on top of
+MLVWM.
+
+OXWM retains the original MIT-style freeware license from MLVWM and
+the underlying MIT/X11 licenses from FVWM, Twm, and the X Consortium.
+See the source file headers and the AUTHORS section of the manual
+page for full attribution.
+
+Upstream Project
+----------------
+
+  MLVWM:  https://github.com/morgant/mlvwm
+  FVWM:   https://www.fvwm.org/
+  Twm:    (historical, X Consortium / MIT)
+
+OXWM is not affiliated with, endorsed by, or derived from work by
+Apple, Inc. Macintosh and MacOS are registered trademarks of Apple,
+Inc. (née Apple Computer, Inc.). The Macintosh-style decorations are
+a tribute interface only.
+
+License
+-------
+
+This software is distributed as freeware as long as the original
+copyright remains in the source code and all documentation. Some
+files retain their original MIT license and one file is in the public
+domain.
+
+See the per-file headers in:
+  oxwm/oxwm.c, oxwm/oxwm.h, oxwm/screen.h
+
+and the LICENSE section of the README.md for full license terms.

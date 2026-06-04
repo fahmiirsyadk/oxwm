@@ -1,0 +1,7 @@
+PLAN.md
+man/mlvwm._man
+oxwm/oxwm
+mlvwm-desktop
+oxwm/*.o
+mlvwm.*
+**/*.swp

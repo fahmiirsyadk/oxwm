@@ -1,0 +1,12 @@
+XCOMM Imakefile for OXWM man page
+XCOMM
+XCOMM OXWM is a fork of MLVWM. All credit for the original codebase
+XCOMM belongs to TakaC HASEGAWA and the MLVWM contributors.
+XCOMM See ../NOTICE for the full credit history.
+
+#include "../configure.h"
+
+XCOMM Do not change from here !
+
+all::
+InstallManPage(oxwm,$(MANDIR))

@@ -1,0 +1,210 @@
+## �ǥ����ȥåפο�
+Desktopnum	3
+
+## ������ɥ��Υ����ƥ��֤��ޥ����ˤĤ��Ƥ�����
+#FollowToMouse
+
+## ������ɥ��Υ����ƥ��֤��ޥ����ˤĤ��Ƥ�������root ������ɥ��˥ޥ�����
+## ���ä���祢���ƥ��֥�����ɥ�����¸�����
+#SloppyFocus
+
+## �������ɤ���������ɥ��� Stick ���뤫
+StickyShade
+
+## ����ޥåפ���Ƥ��륦����ɥ��� Stick ���뤫
+StickyHide
+
+# ��˥塼�Υե�å���λ��֤Ȳ��
+#FlushMenu 100 2
+
+# ���֥륯��å���ǧ���������
+DoubleClickTime 300
+
+# Edge resistance force
+EdgeResistance 50 50
+
+## Icon����Shade�Ȥ���
+IconifyShade
+
+## Icon����Hide�Ȥ���
+#IconifyHide
+
+## Shade������ɥ���Hide����Show�ˤʤ�Ȥ�Shade�Τޤ�
+#ShadeMap
+
+## MacOS8�Υǥ��졼��������Ͳ�ǽ��
+#System8
+
+## OpaqueMove ���ǽ��
+OpaqueMove
+
+## OpaqueResize ���ǽ��
+OpaqueResize
+
+## OneClickMenu ���ǽ��
+OneClickMenu
+
+
+## ������ɥ��ꥹ�ȤΥ�����ɥ�̾�˥ǥ����ȥå��ֹ椬����ɽ��
+#DisplayDeskNumber
+
+## �ꥵ����/��ư�λ���ɽ����������������ˤʤ�
+Compatible
+
+# IconPath �λ��ꡣStyle �λ��������ɬ��
+IconPath /usr/local/include/X11/pixmaps:/home2/tak/bin/pixmap
+IconMenuIcon label2.xpm
+
+# Balloon help Settings
+UseBalloon "Show Balloon Help" "Hide Balloon Help", Icon label3.xpm
+
+# Font ����(LOCALE���ꤢ��Υ���ץ�)
+MenuBarFont -*-*-*-r-*-*-16-*-*-*-*-*-*-*,\
+	-misc-marumoji-*-*-*-*-16-*-*-*-*-*-jisx0208.1983
+MenuFont -*-*-*-r-*-*-16-*-*-*-*-*-*-*,\
+	-misc-marumoji-*-*-*-*-16-*-*-*-*-*-jisx0208.1983
+TitleBarFont -*-*-*-r-*-*-16-*-*-*-*-*-*-*,\
+	-misc-marumoji-*-*-*-*-16-*-*-*-*-*-jisx0208.1983
+
+# Settings of keyborad short cut
+ShortCut
+Up		C	Desk -
+Down	C	Desk +
+Left    C       PreviousWindow
+Right   C       NextWindow
+Escape  M       Restart oxwm
+Escape  SM      Exit 
+END
+
+# Register the menu
+Menu Apple, Icon label1.xpm, Stick
+"���Υޥ���ˤĤ���..." NonSelect, Gray, Action About
+"" NonSelect
+"�����ߤʤ�"	Icon mini-display.xpm, Action Exec "kterm" exec kterm -ls
+"���Ǥ���"  Action Exec "mule" exec mule, Icon mini-edit.xpm
+"��������" Action Exec "xcal" exec xcalc, Icon mini-calc.xpm
+END
+
+Menu def-File, Label "�ե�����", Left
+"�����ե����" NonSelect, Gray, Action Nop
+"������" NonSelect, Gray, Action Nop
+"����" NonSelect, Gray, Action Nop
+"������ɥ����Ĥ���" NonSelect, Gray, Action Nop
+"" NonSelect
+"����..."  NonSelect, Gray,Action Nop
+"ʣ��" NonSelect, Gray, Action Nop
+"" NonSelect
+"����..." NonSelect, Gray, Action Nop
+"�Ƹ���" NonSelect, Gray, Action Nop
+"" NonSelect
+"�ѻ�����..." NonSelect, Gray, Action Nop
+"�ǥ����ȥåפ����..." NonSelect, Gray, Action Nop
+END
+
+Menu def-Edit, Label "�Խ�"
+"���ä�" Action Nop
+"" NonSelect
+"�ڤ�Ȥ�" Action Nop
+"ʣ��" Action Nop
+"ĥ���դ�" Action Nop
+"�õ�" Action Nop
+"���٤Ƥ�����" Action Nop
+"" NonSelect
+"����åץܡ���ɽ��" Action Nop
+END
+
+Menu def-View, Label "ɽ��"
+"��������" NonSelect, Gray
+"��������������" NonSelect, Gray
+"̾��" NonSelect, Gray
+"�礭��" NonSelect, Gray
+"����" NonSelect, Gray
+"����" NonSelect, Gray
+"�С������" NonSelect, Gray
+END
+
+Menu def-Label, Label "��٥�"
+"�ʤ�" NonSelect, Gray
+"" NonSelect
+"ɬ��" NonSelect, Gray
+"����" NonSelect, Gray
+"�ʹ���" NonSelect, Gray
+"̤��" NonSelect, Gray
+"�Ŀ���" NonSelect, Gray
+"�ײ�1" NonSelect, Gray
+"�ײ�2" NonSelect, Gray
+END
+
+Menu def-Special, Label "����" 
+"�ǥ����ȥåפ�����" Action Refresh
+"����Ȣ�����" NonSelect, Gray
+"" NonSelect
+"�ǥ������μ��Ф�" NonSelect, Gray
+"�ǥ������ξõ�..." NonSelect, Gray
+"" NonSelect
+"twm��ư" Action Restart twm
+"�Ƶ�ư" Action Restart oxwm
+"��λ" Action Exit
+END
+
+Menu def-Window 
+"��ư" Action MoveWindow
+"�礭���ѹ�" Action ResizeWindow
+"�������������ؤ�" Action ToggleScroll
+"" NonSelect
+"������ɥ����Ĥ���" Action KillWindow
+END
+
+
+# Swallow the application at menu
+#Swallow "XEyes"	Action Exec "xeyes" exec xeyes -geometry 25
+Swallow "XClock" Action Exec "xclock" exec xclock -geometry 180x25 -digital -padding 5 -update 1
+
+# Definition MenuBar
+MenuBar default
+def-File
+def-Edit
+def-View
+def-Label
+def-Special
+def-Window
+END
+
+# Definition MenuBar
+MenuBar default
+def-File
+def-Edit
+def-View
+def-Label
+def-Special
+def-Window
+END
+
+InitFunction
+Desk 1
+Exec "kterm" kterm -ls -geometry 80x25 &
+Wait kterm
+Desk 0
+Exec "kterm" kterm -ls -geometry 80x25 &
+Wait kterm
+END
+
+# Window decoration
+Style
+"*" MiniIcon mini-cross.xpm, MaxmizeScale 90, MenuBar default
+"Netscape" MiniIcon mini-nscape.xpm
+"Emacs" MiniIcon mini-edit.xpm
+"xv" MiniIcon mini-xv.xpm, EnableScroll
+"XCalc" MiniIcon mini-calc.xpm
+"Xarchie" MiniIcon mini.xarchie.xpm
+"Xmag" MiniIcon mini.xmag.xpm
+"XMeter" NoSBarH, NoSBarV, NoResizeR, NoMinMaxR, NoTitle, NoCloseR
+"XMeter" NoWinList, Sticky, SkipSelect
+"*biff" NoSBarH, NoSBarV, NoResizeR, NoMinMaxR, NoWinList, NoCloseR
+"XEyes"  NoSBarV, NoMinMaxR, NoSBarH, NoWinList 
+"XCal" NoSBarH, NoSBarV, NoResizeR, NoMinMaxR, NoWinList, NoCloseR
+"XConsole"  NoSBarH, NoSBarV, NoResizeR, NoTitle, NoWinList, SkipSelect
+END
+
+# ¾��������ɤ�
+Read Oxwmrc-Kterm
