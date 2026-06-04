@@ -1,6 +1,7 @@
 # OXWM
 
 ![Screenshot](ss.png?raw=true)]
+![Desktop](ss_desktop.png?raw=true)]
 
 ## OVERVIEW
 
