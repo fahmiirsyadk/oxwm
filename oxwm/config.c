@@ -562,8 +562,7 @@ void SetIconPath( char *line, FILE *fp )
 
 	top = SkipSpace( line+8 );
 	if( Scr.IconPath!=NULL ) free( Scr.IconPath );
-	Scr.IconPath = calloc( strlen(top), 1 );
-	strncpy( Scr.IconPath, top, strlen(top)-1 );
+	Scr.IconPath = strdup( top );
 }
 
 void SetDisplayDeskNum( char *line, FILE *fp )
@@ -639,10 +638,13 @@ XFontStruct **font,
 void SetFontConfig( char *line, FILE *fp )
 {
 	char *fontname, *top;
+	size_t len;
 
 	top = SkipSpace( SkipNonSpace(line) );
+	len = strlen(top);
+	if( len > 0 && top[len-1] == '\n' ) top[--len] = '\0';
 	fontname = strdup( top );
-	fontname[strlen(fontname)-1] = '\0';
+	if( !fontname ) return;
 
 	if( !strncmp( line, "MenuBarFont", 11 ) )
 		SetFont( &(MENUBARFONT), fontname );

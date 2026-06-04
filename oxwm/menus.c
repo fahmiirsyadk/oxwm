@@ -866,7 +866,7 @@ void DelMenuItem( MenuLabel *ml, char *action )
 	MenuItem *mi, *prev;
 
 	for( mi=ml->m_item, prev=NULL;
-		strcmp( mi->action, action )!=0 && mi;
+		mi && strcmp( mi->action, action )!=0;
 		prev=mi, mi=mi->next );
 	if( !mi )	return;
 

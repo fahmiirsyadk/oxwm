@@ -148,10 +148,12 @@ void FreeFont( void )
 	XFreeFontSet( dpy, Scr.MenuBarFs );
 	XFreeFontSet( dpy, Scr.MenuFs );
 	XFreeFontSet( dpy, Scr.WindowFs );
+	XFreeFontSet( dpy, Scr.BalloonFs );
 #else
 	XFreeFont( dpy, Scr.MenuBarFont );
 	XFreeFont( dpy, Scr.MenuFont );
 	XFreeFont( dpy, Scr.WindowFont );
+	XFreeFont( dpy, Scr.BalloonFont );
 #endif
 }
 
@@ -464,6 +466,7 @@ void usage( void )
 	fprintf( stderr, "Oxwm Ver %s\n\n", VERSION );
 	fprintf( stderr, "oxwm [-d display] [-f config_file]");
 	fprintf( stderr, " [-debug]\n" );
+	exit( 1 );
 }
 
 XErrorHandler CatchRedirectError(Display *err_dpy, XErrorEvent *event)
@@ -569,16 +572,16 @@ int main( int argc, char *argv[] )
 			else				display_name = argv[lp];
 			continue;
 		}
-		if( !strncmp( argv[lp], "-f", 2 ) ){
+		if( !strncmp( argv[lp], "-f", 2 ) && strlen(argv[lp])==2 ){
 			if( ++lp>=argc )	usage();
 			else				config_file = argv[lp];
 			continue;
 		}
-		if( !strncmp( argv[lp], "-s", 2 ) ){
+		if( !strncmp( argv[lp], "-s", 2 ) && strlen(argv[lp])==2 ){
 			single = True;
 			continue;
 		}
-		if( !strncmp( argv[lp], "-debug", 6 )){
+		if( !strcmp( argv[lp], "-debug" )){
 			Scr.flags |= DEBUGOUT;
 			continue;
 		}
@@ -632,16 +635,34 @@ int main( int argc, char *argv[] )
                   if (cp != NULL)
                   *cp = '\0';  /* truncate at display part */
                 }
-                snprintf(message, sizeof(message), "%s -d %s.%d -s", argv[0], display_screen, lp);
+
+                /* Build argv: argv[0] -d display.n -s [-debug] [-f cfg] */
+                {
+                    char d_arg[64];
+                    char *child_argv[8];
+                    int ci = 0;
+
+                    snprintf(d_arg, sizeof(d_arg), "%s.%d", display_screen, lp);
+
+                    child_argv[ci++] = argv[0];
+                    child_argv[ci++] = "-d";
+                    child_argv[ci++] = d_arg;
+                    child_argv[ci++] = "-s";
+                    if( Scr.flags & DEBUGOUT )
+                        child_argv[ci++] = "-debug";
+                    if( config_file != NULL ){
+                        child_argv[ci++] = "-f";
+                        child_argv[ci++] = config_file;
+                    }
+                    child_argv[ci++] = NULL;
+
+                    if( fork() == 0 ){
+                        execvp( argv[0], child_argv );
+                        _exit( 1 );
+                    }
+                }
+
                 free(display_screen);
-
-                if( Scr.flags & DEBUGOUT)
-                    snprintf(message + strlen(message), sizeof(message) - strlen(message), " -debug");
-                if( config_file != NULL )
-                    snprintf(message + strlen(message), sizeof(message) - strlen(message) ," -f %s", config_file);
-                snprintf(message + strlen(message), sizeof(message) - strlen(message), " &\n");
-
-                system(message);
 			}
 		}
 	}

@@ -126,8 +126,11 @@ static int wrap_text(const char *text, char out[MAX_LINES][64], int maxw) {
 			} else {
 				n++;
 				i = 0;
-				memcpy(out[n], word_start, wlen);
-				i = wlen;
+				int fit = wlen;
+				if (fit > maxw - 1) fit = maxw - 1;
+				if (fit > 60) fit = 60;
+				memcpy(out[n], word_start, fit);
+				i += fit;
 				out[n][i] = '\0';
 			}
 		}
@@ -402,6 +405,8 @@ static void show_menu(int x, int y, int idx) {
 	menu_y = y;
 
 	/* Keep on screen */
+	if (menu_x < 0) menu_x = 0;
+	if (menu_y < 0) menu_y = 0;
 	if (menu_x + MENU_W > sw) menu_x = sw - MENU_W - 2;
 	if (menu_y + MENU_ITEMS * MENU_ITEM_H > sh)
 		menu_y = sh - MENU_ITEMS * MENU_ITEM_H - 2;
@@ -680,6 +685,7 @@ int main(int argc, char **argv) {
 	char def[512];
 	if (!cfgfile) {
 		const char *home = getenv("HOME");
+		if (!home) home = "/tmp";
 		snprintf(def, sizeof(def), "%s/.oxwm/desktop.conf", home);
 		if (access(def, R_OK) != 0)
 			snprintf(def, sizeof(def), "%s/.mlvwm/desktop.conf", home);
@@ -711,11 +717,12 @@ int main(int argc, char **argv) {
 				break;
 			case ButtonRelease: {
 				int item = menu_hit(ev.xbutton.x, ev.xbutton.y);
+				int idx = menu_idx;
 				hide_menu();
-				if (item == 0 && menu_idx >= 0) {
+				if (item == 0 && idx >= 0) {
 					/* Open */
 					if (fork() == 0) {
-						execl("/bin/sh", "sh", "-c", icons[menu_idx].cmd, NULL);
+						execl("/bin/sh", "sh", "-c", icons[idx].cmd, NULL);
 						_exit(1);
 					}
 				} else if (item == 1) {
@@ -796,12 +803,12 @@ int main(int argc, char **argv) {
 				 * so the user never sees a partial frame. */
 				XGrabServer(dpy);
 
-				XClearArea(dpy, desktop, drag_old_x, drag_old_y,
-				           ICON_WIN_W, ICON_WIN_H, False);
-
 				XftDraw *draw = XftDrawCreate(dpy, desktop,
 					DefaultVisual(dpy, screen), DefaultColormap(dpy, screen));
 				if (draw) {
+					XClearArea(dpy, desktop, drag_old_x, drag_old_y,
+					           ICON_WIN_W, ICON_WIN_H, False);
+
 					for (int i = 0; i < nicons; i++) {
 						if (i == drag_idx) continue;
 						if (rects_overlap(icons[i].x, icons[i].y, ICON_WIN_W, ICON_WIN_H,
@@ -814,10 +821,10 @@ int main(int argc, char **argv) {
 					d->y = ny;
 					paint_icon(draw, drag_idx);
 					XftDrawDestroy(draw);
-				}
 
-				drag_old_x = nx;
-				drag_old_y = ny;
+					drag_old_x = nx;
+					drag_old_y = ny;
+				}
 
 				XUngrabServer(dpy);
 				XSync(dpy, False);
