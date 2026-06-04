@@ -1,6 +1,6 @@
 # OXWM
 
-[![Screenshot](ss.png?raw=true)]
+![Screenshot](ss.png?raw=true)]
 
 ## OVERVIEW
 
