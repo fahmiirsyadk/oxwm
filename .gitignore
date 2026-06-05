@@ -1,7 +1,7 @@
 PLAN.md
-man/mlvwm._man
+man/oxwm._man
 oxwm/oxwm
-mlvwm-desktop
+oxwm-desktop
 oxwm/*.o
-mlvwm.*
+oxwm.*
 **/*.swp

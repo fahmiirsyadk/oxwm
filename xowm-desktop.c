@@ -37,6 +37,8 @@
 #include <time.h>
 #include <math.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #define ICON_SIZE     48
 #define ICON_WIN_W    80
@@ -439,10 +441,30 @@ static char *trash_dir_path(void) {
 	return p;
 }
 
+static void ensure_trash_dir_exists(void) {
+	const char *home = getenv("HOME");
+	if (!home) home = "/tmp";
+	char path[512];
+	snprintf(path, sizeof(path), "%s/.local/share", home);
+	mkdir(path, 0700);
+	snprintf(path, sizeof(path), "%s/.local/share/Trash", home);
+	mkdir(path, 0700);
+	snprintf(path, sizeof(path), "%s/.local/share/Trash/files", home);
+	mkdir(path, 0700);
+}
+
 static void open_trash(void) {
+	ensure_trash_dir_exists();
 	char *td = trash_dir_path();
 	if (fork() == 0) {
+		/* xdg-open may resolve inode/directory to a terminal on this
+		 * system, so we explicitly prefer thunar (the file manager
+		 * referenced in the default config), then pcmanfm, then
+		 * fall back to xdg-open / nautilus. */
+		execlp("thunar", "thunar", td, (char *)NULL);
+		execlp("pcmanfm", "pcmanfm", td, (char *)NULL);
 		execlp("xdg-open", "xdg-open", td, (char *)NULL);
+		execlp("nautilus", "nautilus", td, (char *)NULL);
 		_exit(1);
 	}
 	free(td);
@@ -1092,9 +1114,6 @@ int main(int argc, char **argv) {
 			case MotionNotify:
 				menu_set_hover(ev.xmotion.x, ev.xmotion.y);
 				break;
-			case ButtonPress:
-				hide_menu();
-				break;
 			case ButtonRelease: {
 				int item = menu_hit(ev.xbutton.x, ev.xbutton.y);
 				int idx = menu_idx;
@@ -1170,7 +1189,26 @@ int main(int argc, char **argv) {
 			XFlush(dpy);
 			break;
 
-		case ButtonPress:
+		case ButtonPress: {
+			/* Any click on the desktop should drop WM focus from the
+			 * previous app so the menubar returns to the global default.
+			 * Send _NET_ACTIVE_WINDOW (None) so compliant WMs (including
+			 * oxwm) clear their active window and remap the global
+			 * menubar. */
+			XClientMessageEvent cm;
+			memset(&cm, 0, sizeof(cm));
+			cm.type = ClientMessage;
+			cm.window = root;
+			cm.message_type = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+			cm.format = 32;
+			cm.data.l[0] = 0;       /* source indication */
+			cm.data.l[1] = CurrentTime;
+			cm.data.l[2] = 0;       /* currently active window = None */
+			XSendEvent(dpy, root, False,
+			           SubstructureRedirectMask | SubstructureNotifyMask,
+			           (XEvent *)&cm);
+			XFlush(dpy);
+		}
 			if (ev.xbutton.button == 3) {
 				/* Right-click: context menu */
 				int idx = hit_test(ev.xbutton.x, ev.xbutton.y);
