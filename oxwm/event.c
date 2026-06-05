@@ -278,19 +278,21 @@ int GetMapStateProp( OxwmWindow *tmp_win )
 {
 	Atom *protocols = NULL;
 	Atom atype;
-	int aformat;
+	int aformat, state;
 	unsigned long bytes_remain,nitems;
 
 	if( XGetWindowProperty( dpy, tmp_win->w, _XA_WM_STATE,
 						   0L, 2L, False,
 						   _XA_WM_STATE, &atype, &aformat,
-						   &nitems, &bytes_remain, 
+						   &nitems, &bytes_remain,
 						   (unsigned char **)&protocols ) == Success &&
-	   protocols )
-		return
-			(int) protocols[0];
-	else
-		return WithdrawnState;
+	   protocols ){
+		state = (int) protocols[0];
+		XFree( protocols );
+		return state;
+	}
+	if( protocols ) XFree( protocols );
+	return WithdrawnState;
 }
 
 void Destroy( OxwmWindow *t )
@@ -1617,6 +1619,7 @@ void handle_property_request( XEvent *ev )
 				ChangeDesk( desk );
 			}
 		}
+		if( prop ) XFree( prop );
 		return;
 	}
 	if( XFindContext( dpy, ev->xany.window, OxwmContext, (caddr_t *)&tmp_win )
@@ -1629,17 +1632,28 @@ void handle_property_request( XEvent *ev )
 		oldWinName = WinListName( tmp_win );
 		if( XGetWMName( dpy, tmp_win->w, &text_prop) != 0 ){
 #ifdef USE_LOCALE
+			list = NULL;
 			if(text_prop.value)
 				text_prop.nitems = strlen(text_prop.value);
 			if(XmbTextPropertyToTextList(dpy, &text_prop, &list, &num) >= Success
-			   && num > 0 && *list)
-				tmp_win->name = *list;
+			   && num > 0 && *list){
+				if( tmp_win->name != NoName )
+					XFree( (char *)tmp_win->name );
+				tmp_win->name = strdup( *list );
+			}
+			if( list ) XFreeStringList( list );
+			XFree( text_prop.value );
 #else
+			if( tmp_win->name != NoName )
+				XFree( (char *)tmp_win->name );
 			tmp_win->name = (char *)text_prop.value;
 #endif
 		}			
-		else
+		else {
+			if( tmp_win->name != NoName )
+				XFree( (char *)tmp_win->name );
 			tmp_win->name = NoName;
+		}
 
 		winname = WinListName( tmp_win );
 		sprintf( action, "Select %lX", (unsigned long)tmp_win );

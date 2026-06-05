@@ -779,21 +779,23 @@ void DrawSbarBar( OxwmWindow *t, int context, Bool on_off )
 					XGCValues gcv_gray4, gcv_gray2;
           XGetGCValues(dpy, Scr.Gray4GC, GCForeground, &gcv_gray4);
           XGetGCValues(dpy, Scr.Gray2GC, GCForeground, &gcv_gray2);
-					XSetWindowBackgroundPixmap( dpy, win,
-                     XCreatePixmapFromBitmapData( dpy, Scr.Root,
+					Pixmap bgpix = XCreatePixmapFromBitmapData( dpy, Scr.Root,
 												 mesh, mesh_w, mesh_h,
 												 gcv_gray2.foreground,
 												 gcv_gray4.foreground,
-												 Scr.d_depth ));
+												 Scr.d_depth );
+					XSetWindowBackgroundPixmap( dpy, win, bgpix );
+					XFreePixmap( dpy, bgpix );
 				}
 			}
 			else{
-				XSetWindowBackgroundPixmap( dpy, win,
-                     XCreatePixmapFromBitmapData( dpy, Scr.Root,
+				Pixmap bgpix = XCreatePixmapFromBitmapData( dpy, Scr.Root,
 												 mesh, mesh_w, mesh_h,
 												 BlackPixel(dpy,Scr.screen),
 												 WhitePixel(dpy,Scr.screen),
-												 Scr.d_depth ));
+												 Scr.d_depth );
+				XSetWindowBackgroundPixmap( dpy, win, bgpix );
+				XFreePixmap( dpy, bgpix );
 			}
 			XClearWindow( dpy, win );
 		}

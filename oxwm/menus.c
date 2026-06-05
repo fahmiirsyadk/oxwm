@@ -716,6 +716,7 @@ Bool SwallowMenu( MenuLabel *ml )
 	if( (fullpath=LookUpFiles( getenv("PATH"), comm, X_OK ))==NULL ){
 		ml->flags &= ~SWALLOW;
 		DrawErrMsgOnMenu( "Swallow Falied(Can't Exec) ", comm );
+		free( comm );
 		return False;
 	}
 	free( fullpath );
@@ -726,6 +727,11 @@ Bool SwallowMenu( MenuLabel *ml )
 		XMaskEvent( dpy, SubstructureRedirectMask |
 				   StructureNotifyMask | SubstructureNotifyMask, &ev );
 		if( ev.type==MapRequest ){
+			text_prop.value = NULL;
+#ifdef USE_LOCALE
+			list = NULL;
+#endif
+			class.res_name = class.res_class = NULL;
 			if( XGetWMName( dpy, ev.xmaprequest.window, &text_prop) != 0 ){
 #ifdef USE_LOCALE
 				if(text_prop.value)
@@ -743,7 +749,7 @@ Bool SwallowMenu( MenuLabel *ml )
 			else
 				name = NoName;
 
-			XGetClassHint(dpy, ev.xmaprequest.window, &class);	
+			XGetClassHint(dpy, ev.xmaprequest.window, &class);
 			if( !strcmp( name, ml->name ) ||
 			   !strcmp( class.res_name, ml->name ) ||
 			   !strcmp( class.res_class, ml->name ) ){
@@ -772,7 +778,13 @@ Bool SwallowMenu( MenuLabel *ml )
 			}
 			else
 				HandleEvents( ev );
-			if( name!=NoName )		XFree( name );
+			if( class.res_name ) XFree( (char *)class.res_name );
+			if( class.res_class ) XFree( (char *)class.res_class );
+#ifdef USE_LOCALE
+			if( list ) XFreeStringList( list );
+#else
+			if( name!=NoName ) XFree( name );
+#endif
 		}
 		else
 			HandleEvents( ev );
@@ -846,6 +858,7 @@ void AddMenuItem( MenuLabel *ml, char *label, char *action, char *icon, Icon *mi
 	MenuItem *tmpitem, *newitem;
 
 	newitem = calloc( 1, sizeof( MenuItem ) );
+	if( !newitem ) return;
 
 	if( ml->m_item == NULL )
 		ml->m_item = newitem;
@@ -874,6 +887,7 @@ void DelMenuItem( MenuLabel *ml, char *action )
 	if( mi->action )	free( mi->action );
 	if( mi->iconname )	free( mi->iconname );
 	if( prev )		prev->next = mi->next;
+	else			ml->m_item = mi->next;
 	free( mi );
 }
 

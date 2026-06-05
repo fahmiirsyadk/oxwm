@@ -300,9 +300,12 @@ void ChangeDesk( char *action )
 			newdesk = Scr.n_desktop-1;
 		newdesk = max( 0, newdesk );
 	}
-	else
-		sscanf( action, "%s%d", str, &newdesk );
+	else {
+		if( sscanf( action, "%s%d", str, &newdesk ) != 2 )
+			return;
+	}
 
+	if( newdesk<0 || newdesk>=Scr.n_desktop )		return;
 	if( newdesk==Scr.currentdesk )		return;
 
 	if( (Scr.ActiveWin && 
@@ -661,7 +664,9 @@ void ExecSystems( char *action )
 	if( strchr( action, '"' ) )
 		comm = strrchr( action, '"' )+1;
 	else
-		comm = action+5;
+		comm = action+4;
+	while( *comm == ' ' || *comm == '\t' ) comm++;
+	if( *comm == '\0' ) return;
 
 	if( Scr.flags & DEBUGOUT )
 		fprintf( stderr, "Exec System <%s> !\n", comm );
@@ -781,7 +786,6 @@ void WaitMap( char *action )
 	OxwmWindow *tmp_win;
 	Bool done=True;
 	char *name, *waitname, *point;
-	Atom *protocols = NULL;
 	XTextProperty text_prop;
 #ifdef USE_LOCALE
 	int num;
@@ -799,6 +803,10 @@ void WaitMap( char *action )
 		XMaskEvent( dpy, SubstructureRedirectMask |
 				   StructureNotifyMask | SubstructureNotifyMask, &ev );
 		if( ev.type==MapRequest ){
+			text_prop.value = NULL;
+#ifdef USE_LOCALE
+			list = NULL;
+#endif
 			if( XGetWMName( dpy, ev.xmaprequest.window, &text_prop) != 0 ){
 #ifdef USE_LOCALE
 				if(text_prop.value)
@@ -816,13 +824,20 @@ void WaitMap( char *action )
 			else
 				name = NoName;
 
-			XGetClassHint(dpy, ev.xmaprequest.window, &class);	
+			class.res_name = class.res_class = NULL;
+			XGetClassHint(dpy, ev.xmaprequest.window, &class);
 			if( !strcmp( name, waitname ) ||
 			   !strcmp( class.res_name, waitname ) ||
 			   !strcmp( class.res_class, waitname ) ){
 				done = False;
-				if (protocols) XFree ((char *) protocols);
 			}
+			if( class.res_name ) XFree( (char *)class.res_name );
+			if( class.res_class ) XFree( (char *)class.res_class );
+#ifdef USE_LOCALE
+			if( list ) XFreeStringList( list );
+#else
+			if( text_prop.value ) XFree( text_prop.value );
+#endif
 		}
 		HandleEvents( ev );
 		if( Scr.flags&STARTING && ev.type==MapNotify &&
