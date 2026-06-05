@@ -101,9 +101,9 @@ static int             menu_x, menu_y;
 static GC             menu_gc = None;
 #define MENU_ITEM_H    22
 #define MENU_W         140
-#define MENU_ITEMS_MAX 4
+#define MENU_ITEMS_MAX 5
 static const char *icon_menu_labels[] = {
-	"Open", "Delete", "Arrange Icons", "Refresh Desktop"
+	"Open", "New Launcher...", "Delete", "Arrange Icons", "Refresh Desktop"
 };
 static const char *empty_menu_labels[] = {
 	"New Launcher...", "Arrange Icons", "Refresh Desktop"
@@ -1101,20 +1101,22 @@ int main(int argc, char **argv) {
 				hide_menu();
 				if (item < 0) break;
 				if (was_icon_menu) {
-					/* Icon context: 0=Open 1=Delete 2=Arrange 3=Refresh */
+					/* Icon context: 0=Open 1=New Launcher 2=Delete 3=Arrange 4=Refresh */
 					if (item == 0 && idx >= 0) {
 						open_icon(idx);
-					} else if (item == 1 && idx >= 0) {
+					} else if (item == 1) {
+						new_launcher_dialog();
+					} else if (item == 2 && idx >= 0) {
 						delete_icon(idx);
 						full_redraw();
-					} else if (item == 2) {
+					} else if (item == 3) {
 						for (int i = 0; i < nicons; i++) {
 							calc_icon_pos(i, &icons[i].x, &icons[i].y);
 							icons[i].ox = icons[i].x;
 							icons[i].oy = icons[i].y;
 						}
 						full_redraw();
-					} else if (item == 3) {
+					} else if (item == 4) {
 						full_redraw();
 					}
 				} else {
@@ -1163,7 +1165,7 @@ int main(int argc, char **argv) {
 				int idx = hit_test(ev.xbutton.x, ev.xbutton.y);
 				if (idx >= 0)
 					show_menu(ev.xbutton.x, ev.xbutton.y, idx,
-					          icon_menu_labels, 4);
+					          icon_menu_labels, 5);
 				else
 					show_menu(ev.xbutton.x, ev.xbutton.y, -1,
 					          empty_menu_labels, 3);
