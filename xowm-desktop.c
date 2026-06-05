@@ -62,6 +62,7 @@ typedef struct {
 	int            ox, oy;          /* original position (for snap-back) */
 	int            drag_dx, drag_dy;
 	unsigned long  last_click_ms;
+	unsigned char  selected;
 } DeskIcon;
 
 static DeskIcon        icons[MAX_ICONS];
@@ -82,6 +83,11 @@ static int             drag_active = 0;
 static int             drag_idx = -1;
 static int             drag_start_x, drag_start_y;
 static int             drag_old_x, drag_old_y;
+
+/* Selection state */
+static int             sel_count = 0;
+static GC              sel_gc = None;
+static unsigned long   sel_pixel;
 
 /* Context menu */
 static Window          menu_win = None;
@@ -337,6 +343,13 @@ static void paint_icon_at(XftDraw *draw, DeskIcon *d, int bx, int by) {
 /* Draw one icon at its current stored position */
 static void paint_icon(XftDraw *draw, int idx) {
 	paint_icon_at(draw, &icons[idx], icons[idx].x, icons[idx].y);
+	if (icons[idx].selected && sel_gc) {
+		XSetForeground(dpy, sel_gc, sel_pixel);
+		XSetLineAttributes(dpy, sel_gc, 2, LineSolid, CapButt, JoinMiter);
+		XDrawRectangle(dpy, XftDrawDrawable(draw), sel_gc,
+			icons[idx].x - 2, icons[idx].y - 2,
+			ICON_WIN_W + 3, ICON_WIN_H + 3);
+	}
 }
 
 /* Full redraw — wallpaper bg + all icons */
@@ -373,6 +386,29 @@ static int hit_test(int x, int y) {
 			return i;
 	}
 	return -1;
+}
+
+static void selection_clear(void) {
+	for (int i = 0; i < nicons; i++) icons[i].selected = 0;
+	sel_count = 0;
+}
+
+static void selection_add(int idx) {
+	if (idx < 0 || idx >= nicons) return;
+	if (icons[idx].selected) return;
+	icons[idx].selected = 1;
+	sel_count++;
+}
+
+static void selection_toggle(int idx) {
+	if (idx < 0 || idx >= nicons) return;
+	if (icons[idx].selected) {
+		icons[idx].selected = 0;
+		sel_count--;
+	} else {
+		icons[idx].selected = 1;
+		sel_count++;
+	}
 }
 
 /* === CONTEXT MENU === */
@@ -681,6 +717,16 @@ int main(int argc, char **argv) {
 	XftColorAllocName(dpy, visual, cmap, "black", &xft_black);
 	XftColorAllocName(dpy, visual, cmap, "white", &xft_white);
 
+	/* Selection highlight color/GC */
+	{
+		XColor scol;
+		if (XAllocNamedColor(dpy, cmap, "#3a6cd8", &scol, &scol))
+			sel_pixel = scol.pixel;
+		else
+			sel_pixel = WhitePixel(dpy, screen);
+		sel_gc = XCreateGC(dpy, desktop, 0, NULL);
+	}
+
 	/* === ICONS === */
 	char def[512];
 	if (!cfgfile) {
@@ -771,15 +817,34 @@ int main(int argc, char **argv) {
 
 			{
 				int idx = hit_test(ev.xbutton.x, ev.xbutton.y);
+				unsigned int state = ev.xbutton.state;
+				int shift = state & ShiftMask;
+				int ctrl  = state & ControlMask;
+
 				if (idx >= 0) {
-					drag_active = 1;
-					drag_idx = idx;
-					drag_start_x = ev.xbutton.x;
-					drag_start_y = ev.xbutton.y;
-					drag_old_x = icons[idx].x;
-					drag_old_y = icons[idx].y;
-					icons[idx].drag_dx = ev.xbutton.x - icons[idx].x;
-					icons[idx].drag_dy = ev.xbutton.y - icons[idx].y;
+					if (ctrl)       selection_toggle(idx);
+					else if (shift) selection_add(idx);
+					else {
+						if (!icons[idx].selected || sel_count > 1) {
+							selection_clear();
+							selection_add(idx);
+						}
+					}
+					full_redraw();
+
+					if (sel_count > 0) {
+						drag_active = 1;
+						drag_idx = idx;
+						drag_start_x = ev.xbutton.x;
+						drag_start_y = ev.xbutton.y;
+						drag_old_x = icons[idx].x;
+						drag_old_y = icons[idx].y;
+						icons[idx].drag_dx = ev.xbutton.x - icons[idx].x;
+						icons[idx].drag_dy = ev.xbutton.y - icons[idx].y;
+					}
+				} else if (sel_count > 0) {
+					selection_clear();
+					full_redraw();
 				}
 			}
 			break;
@@ -797,7 +862,24 @@ int main(int argc, char **argv) {
 				if (nx > sw - ICON_WIN_W) nx = sw - ICON_WIN_W;
 				if (ny > sh - ICON_WIN_H) ny = sh - ICON_WIN_H;
 
-				if (nx == d->x && ny == d->y) break;
+				int dx = nx - d->x;
+				int dy = ny - d->y;
+				if (dx == 0 && dy == 0) break;
+
+				/* Compute bounding box of old selected positions BEFORE moving
+				 * anything, so we know what to clear. */
+				int minx = sw, miny = sh, maxx = 0, maxy = 0;
+				int any = 0;
+				for (int i = 0; i < nicons; i++) {
+					if (!icons[i].selected) continue;
+					if (icons[i].x < minx)     minx = icons[i].x;
+					if (icons[i].y < miny)     miny = icons[i].y;
+					if (icons[i].x + ICON_WIN_W  > maxx) maxx = icons[i].x + ICON_WIN_W;
+					if (icons[i].y + ICON_WIN_H  > maxy) maxy = icons[i].y + ICON_WIN_H;
+					any = 1;
+				}
+				int bw = any ? maxx - minx : 0;
+				int bh = any ? maxy - miny : 0;
 
 				/* Grab server: make the clear+repaint+paint sequence atomic
 				 * so the user never sees a partial frame. */
@@ -806,20 +888,44 @@ int main(int argc, char **argv) {
 				XftDraw *draw = XftDrawCreate(dpy, desktop,
 					DefaultVisual(dpy, screen), DefaultColormap(dpy, screen));
 				if (draw) {
-					XClearArea(dpy, desktop, drag_old_x, drag_old_y,
-					           ICON_WIN_W, ICON_WIN_H, False);
+					if (any)
+						XClearArea(dpy, desktop, minx, miny, bw, bh, False);
 
+					/* Update positions of all selected icons. */
 					for (int i = 0; i < nicons; i++) {
-						if (i == drag_idx) continue;
-						if (rects_overlap(icons[i].x, icons[i].y, ICON_WIN_W, ICON_WIN_H,
-						                  drag_old_x, drag_old_y, ICON_WIN_W, ICON_WIN_H))
-							paint_icon(draw, i);
+						if (!icons[i].selected) continue;
+						if (i == drag_idx) {
+							icons[i].x = nx;
+							icons[i].y = ny;
+						} else {
+							icons[i].x += dx;
+							icons[i].y += dy;
+							if (icons[i].x < 0) icons[i].x = 0;
+							if (icons[i].y < 0) icons[i].y = 0;
+							if (icons[i].x > sw - ICON_WIN_W) icons[i].x = sw - ICON_WIN_W;
+							if (icons[i].y > sh - ICON_WIN_H) icons[i].y = sh - ICON_WIN_H;
+						}
 					}
-					/* Update position BEFORE painting so the dragged icon
-					 * is drawn at the new cursor position, not the old one. */
-					d->x = nx;
-					d->y = ny;
+
+					/* Repaint unselected icons that overlapped the cleared region
+					 * (using their current position, which is unchanged). */
+					if (any) {
+						for (int i = 0; i < nicons; i++) {
+							if (icons[i].selected) continue;
+							if (rects_overlap(icons[i].x, icons[i].y,
+							                  ICON_WIN_W, ICON_WIN_H,
+							                  minx, miny, bw, bh))
+								paint_icon(draw, i);
+						}
+					}
+
+					/* Paint all selected, drag_idx last so it ends up on top. */
+					for (int i = 0; i < nicons; i++) {
+						if (!icons[i].selected || i == drag_idx) continue;
+						paint_icon(draw, i);
+					}
 					paint_icon(draw, drag_idx);
+
 					XftDrawDestroy(draw);
 
 					drag_old_x = nx;
@@ -840,9 +946,13 @@ int main(int argc, char **argv) {
 				             abs(ev.xbutton.y - drag_start_y) > 3);
 
 				if (moved) {
-					resolve_overlap(drag_idx);
-					d->ox = d->x;
-					d->oy = d->y;
+					for (int i = 0; i < nicons; i++) {
+						if (icons[i].selected) {
+							resolve_overlap(i);
+							icons[i].ox = icons[i].x;
+							icons[i].oy = icons[i].y;
+						}
+					}
 					full_redraw();
 				} else {
 					unsigned long now = now_ms();
