@@ -77,7 +77,10 @@ static int             screen;
 static Window          root;
 static Window          desktop;
 static XftFont        *xft_font;
-static XftColor        xft_black, xft_white;
+static XftColor        xft_black, xft_white, xft_gray;
+static unsigned long   px_gray1, px_gray2, px_gray3, px_gray4;
+static GC              gc_gray1, gc_gray2, gc_gray3, gc_gray4;
+static GC              gc_black, gc_white;
 static Atom            a_xrootpmap, a_esetroot;
 static int             sw, sh;
 static int             max_rows;     /* how many rows fit vertically */
@@ -505,11 +508,58 @@ static void add_trash_icon(void) {
 	nicons++;
 }
 
-/* Modal text input. Returns a strdup'd string the caller must free, or NULL. */
+/* Modal text input, rofi-style: single slim bar, fixed at screen center.
+ * Prompt text is shown inline in gray on the left, input follows in black
+ * with a blinking cursor bar. Returns a strdup'd string the caller must
+ * free, or NULL on Escape. */
+/* Draw a 3D shadow box (bevel) like the WM does, using our popup GCs.
+ * mode bits: 1=TOP, 2=BOTTOM, 4=LEFT, 8=RIGHT (matches oxwm/borders.c). */
+#define P_SHADOW_TOP    1
+#define P_SHADOW_BOTTOM 2
+#define P_SHADOW_LEFT   4
+#define P_SHADOW_RIGHT  8
+#define P_SHADOW_ALL    (P_SHADOW_TOP|P_SHADOW_BOTTOM|P_SHADOW_LEFT|P_SHADOW_RIGHT)
+static void p_shadow_box(Window win, int x, int y, int ww, int hh,
+                         int depth, GC hilight, GC shadow, char mode) {
+	int w = ww - 1, h = hh - 1;
+	for (int lp = 0; lp < depth; lp++) {
+		if (mode & P_SHADOW_BOTTOM)
+			XDrawLine(dpy, win, shadow, x+lp+1, y+h-lp, x+w-lp, y+h-lp);
+		if (mode & P_SHADOW_LEFT)
+			XDrawLine(dpy, win, hilight, x+lp, y+lp, x+lp, y+h-lp-1);
+		if (mode & P_SHADOW_TOP)
+			XDrawLine(dpy, win, hilight, x+lp, y+lp, x+w-lp-1, y+lp);
+		if (mode & P_SHADOW_RIGHT)
+			XDrawLine(dpy, win, shadow, x+w-lp, y+lp+1, x+w-lp, y+h-lp-1);
+	}
+}
+
+/* Draw the popup frame: gray border area with the WM's bevel/shadow,
+ * white content area inside. Matches oxwm's DrawFrameShadow for
+ * windows without TITLE|SBARV|SBARH|RESIZER, but with a gray border
+ * background instead of the default white window background. */
+static void p_draw_frame(Window win, int w, int h) {
+	/* Fill the entire window with gray (the border background) */
+	XFillRectangle(dpy, win, gc_gray3, 0, 0, w, h);
+	/* Fill the interior with white (content area, inside the bevel) */
+	XFillRectangle(dpy, win, gc_white, 5, 5, w - 10, h - 10);
+	/* Outer bevel: white top/left highlight, dark gray bottom/right shadow */
+	p_shadow_box(win, 0, 0, w, h, 2, gc_white, gc_gray2, P_SHADOW_ALL);
+	/* Inner bevel: dark gray top/left shadow, white bottom/right highlight */
+	p_shadow_box(win, 3, 3, w - 6, h - 6, 2, gc_gray2, gc_white, P_SHADOW_ALL);
+	/* 2px black border on bottom and right (matches the WM) */
+	XDrawLine(dpy, win, gc_black, 0, h - 2, w, h - 2);
+	XDrawLine(dpy, win, gc_black, 0, h - 1, w, h - 1);
+	XDrawLine(dpy, win, gc_black, w - 2, 0, w - 2, h);
+	XDrawLine(dpy, win, gc_black, w - 1, 0, w - 1, h);
+}
+
+/* Modal text input with a WM-styled bevel border (no title bar, no close
+ * box). Closes on Escape or on click outside the window. */
 static char *prompt_string(const char *title, const char *prompt,
                             const char *default_text) {
 	(void)title;
-	int w = 460, h = 80;
+	const int w = 500, h = 40;
 	int x = (sw - w) / 2, y = (sh - h) / 2;
 	if (x < 0) x = 0;
 	if (y < 0) y = 0;
@@ -520,12 +570,15 @@ static char *prompt_string(const char *title, const char *prompt,
 	                ButtonPressMask | FocusChangeMask;
 	wa.background_pixel = WhitePixel(dpy, screen);
 	wa.border_pixel = BlackPixel(dpy, screen);
-	Window pw = XCreateWindow(dpy, root, x, y, w, h, 2,
+	Window pw = XCreateWindow(dpy, root, x, y, w, h, 1,
 	                          CopyFromParent, InputOutput, CopyFromParent,
 	                          CWOverrideRedirect | CWEventMask |
 	                          CWBackPixel | CWBorderPixel, &wa);
 	XMapRaised(dpy, pw);
 	XSetInputFocus(dpy, pw, RevertToParent, CurrentTime);
+	/* Grab pointer so click-outside events come to us. */
+	XGrabPointer(dpy, pw, False, ButtonPressMask | ButtonReleaseMask,
+	             GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
 	XFlush(dpy);
 
 	char text[256] = "";
@@ -541,6 +594,18 @@ static char *prompt_string(const char *title, const char *prompt,
 	int done = 0;
 	char *result = NULL;
 	XEvent ev;
+	int prompt_w = 0;
+	if (prompt && xft_font) {
+		XGlyphInfo ext;
+		XftTextExtents8(dpy, xft_font,
+			(const unsigned char *)prompt, strlen(prompt), &ext);
+		prompt_w = ext.width;
+	}
+	/* Content area starts after the 5px bevel */
+	const int inner_pad = 12;
+	const int text_baseline = (h + (xft_font ? xft_font->ascent : 12)) / 2;
+	int input_x = inner_pad + (prompt ? prompt_w + 8 : 0);
+
 	while (!done) {
 		XNextEvent(dpy, &ev);
 		if (ev.xany.window != pw) continue;
@@ -550,16 +615,36 @@ static char *prompt_string(const char *title, const char *prompt,
 		case FocusOut:
 			if (draw && xft_font) {
 				XClearArea(dpy, pw, 0, 0, w, h, False);
+				p_draw_frame(pw, w, h);
 				if (prompt) {
-					XftDrawString8(draw, &xft_black, xft_font, 10, 22,
+					XftDrawString8(draw, &xft_gray, xft_font,
+						inner_pad, text_baseline,
 						(const unsigned char *)prompt, strlen(prompt));
 				}
-				XftDrawString8(draw, &xft_black, xft_font, 10, 56,
+				XftDrawString8(draw, &xft_black, xft_font,
+					input_x, text_baseline,
 					(const unsigned char *)text, text_len);
+				int cursor_x = input_x;
+				if (text_len > 0) {
+					XGlyphInfo ti;
+					XftTextExtents8(dpy, xft_font,
+						(const unsigned char *)text, text_len, &ti);
+					cursor_x += ti.width;
+				}
 				XSetForeground(dpy, menu_gc, BlackPixel(dpy, screen));
-				XDrawRectangle(dpy, pw, menu_gc, 6, 36, w - 14, 24);
+				XDrawLine(dpy, pw, menu_gc, cursor_x + 1, 8,
+				          cursor_x + 1, h - 8);
 			}
 			break;
+		case ButtonPress: {
+			int bx = ev.xbutton.x, by = ev.xbutton.y;
+			/* Any click outside the popup closes it */
+			if (bx < 0 || bx >= w || by < 0 || by >= h) {
+				result = NULL;
+				done = 1;
+			}
+			break;
+		}
 		case KeyPress: {
 			KeySym ks;
 			char buf[16];
@@ -597,6 +682,7 @@ static char *prompt_string(const char *title, const char *prompt,
 	}
 
 	if (draw) XftDrawDestroy(draw);
+	XUngrabPointer(dpy, CurrentTime);
 	XDestroyWindow(dpy, pw);
 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 	XSync(dpy, False);
@@ -1069,6 +1155,32 @@ int main(int argc, char **argv) {
 
 	XftColorAllocName(dpy, visual, cmap, "black", &xft_black);
 	XftColorAllocName(dpy, visual, cmap, "white", &xft_white);
+	XftColorAllocName(dpy, visual, cmap, "#666666", &xft_gray);
+
+	/* === POPUP FRAME COLORS (match oxwm WM theme) === */
+	{
+		XColor exact, sc;
+		Colormap cm = DefaultColormap(dpy, screen);
+		const char *names[] = { "#444444", "#777777", "#aaaaaa", "#e0e0e0" };
+		unsigned long *pixels[] = { &px_gray1, &px_gray2, &px_gray3, &px_gray4 };
+		for (int i = 0; i < 4; i++) {
+			if (XAllocNamedColor(dpy, cm, names[i], &sc, &exact))
+				*pixels[i] = sc.pixel;
+			else
+				*pixels[i] = (i < 2) ? BlackPixel(dpy, screen)
+				                     : WhitePixel(dpy, screen);
+		}
+		XGCValues gcv;
+		unsigned long gcm = GCForeground;
+		gcv.foreground = px_gray1; gc_gray1 = XCreateGC(dpy, root, gcm, &gcv);
+		gcv.foreground = px_gray2; gc_gray2 = XCreateGC(dpy, root, gcm, &gcv);
+		gcv.foreground = px_gray3; gc_gray3 = XCreateGC(dpy, root, gcm, &gcv);
+		gcv.foreground = px_gray4; gc_gray4 = XCreateGC(dpy, root, gcm, &gcv);
+		gcv.foreground = BlackPixel(dpy, screen);
+		gc_black = XCreateGC(dpy, root, gcm, &gcv);
+		gcv.foreground = WhitePixel(dpy, screen);
+		gc_white = XCreateGC(dpy, root, gcm, &gcv);
+	}
 
 	/* Selection highlight color/GC */
 	{
