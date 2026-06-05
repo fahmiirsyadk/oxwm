@@ -181,6 +181,7 @@ extern Atom _XA_WM_TAKE_FOCUS;
 extern Atom _XA_WM_SAVE_YOURSELF;
 extern Atom _XA_WM_DELETE_WINDOW;
 extern Atom _XA_WM_DESKTOP;
+extern Atom _XA_NET_ACTIVE_WINDOW;
 
 extern void Done( int, char * );
 #ifdef USE_LOCALE

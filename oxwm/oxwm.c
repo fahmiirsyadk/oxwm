@@ -305,6 +305,7 @@ Atom _XA_WM_PROTOCOLS;
 Atom _XA_WM_TAKE_FOCUS;
 Atom _XA_WM_DELETE_WINDOW;
 Atom _XA_WM_DESKTOP;
+Atom _XA_NET_ACTIVE_WINDOW;
 
 void InternUsefulAtoms (void)
 {
@@ -319,6 +320,7 @@ void InternUsefulAtoms (void)
 	_XA_WM_TAKE_FOCUS = XInternAtom (dpy, "WM_TAKE_FOCUS", False);
 	_XA_WM_DELETE_WINDOW = XInternAtom (dpy, "WM_DELETE_WINDOW", False);
 	_XA_WM_DESKTOP = XInternAtom (dpy, "WM_DESKTOP", False);
+	_XA_NET_ACTIVE_WINDOW = XInternAtom (dpy, "_NET_ACTIVE_WINDOW", False);
 
 	return;
 }

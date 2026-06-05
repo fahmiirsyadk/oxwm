@@ -561,6 +561,10 @@ void SetIconPath( char *line, FILE *fp )
 	char *top;
 
 	top = SkipSpace( line+8 );
+	/* Strip trailing newline/CR left by fgets */
+	int len = strlen(top);
+	while( len>0 && (top[len-1]=='\n' || top[len-1]=='\r') )
+		top[--len] = '\0';
 	if( Scr.IconPath!=NULL ) free( Scr.IconPath );
 	Scr.IconPath = strdup( top );
 }

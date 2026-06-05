@@ -1492,17 +1492,28 @@ void HandleEnterNotify( XEvent *ev )
 		if((d.xcrossing.mode==NotifyNormal)&&(d.xcrossing.detail!=NotifyInferior))
 			return;
 	if( ev->xany.window == Scr.Root ){
-		if ( Scr.flags&FOLLOWTOMOUSE && !(Scr.flags&SLOPPYFOCUS)) 
+		if ( Scr.flags&FOLLOWTOMOUSE && !(Scr.flags&SLOPPYFOCUS))
 			SetFocus( NULL );
 		InstallWindowColormaps( &Scr.OxwmRoot );
 		return;
 	}
 	if( XFindContext ( dpy, ev->xany.window, OxwmContext, (caddr_t *)&tmp_win )
-	   != XCNOENT ){
-		if( Scr.flags&FOLLOWTOMOUSE )			SetFocus( tmp_win );
-		if( ev->xcrossing.window==tmp_win->w )
-			InstallWindowColormaps( tmp_win );
+	   == XCNOENT ){
+		/* Pointer entered an unmanaged window (e.g. the oxwm-desktop
+		 * wallpaper). Drop focus to root so the menubar returns to
+		 * the global default. SetFocus calls MapMenuBar(NULL) but
+		 * the labels sometimes don't actually remap when Scr.ActiveMenu
+		 * was already the default — force a re-map by clearing it. */
+		if( Scr.ActiveWin ){
+			SetFocus( NULL );
+			Scr.ActiveMenu = NULL;
+			MapMenuBar( NULL );
+		}
+		return;
 	}
+	if( Scr.flags&FOLLOWTOMOUSE )			SetFocus( tmp_win );
+	if( ev->xcrossing.window==tmp_win->w )
+		InstallWindowColormaps( tmp_win );
 }
 
 void HandleLeaveNotify( XEvent *ev )
@@ -1829,6 +1840,23 @@ void HandleClientMessage( XEvent *ev )
 	unsigned long eventMask;
 	OxwmWindow *NextActive;
 	char action[24];
+
+	/* _NET_ACTIVE_WINDOW: any client may request that the WM activate
+	 * a specific window (or None) as the active window. The source
+	 * window may be the root, so we don't require it to be in our
+	 * managed context. */
+	if( _XA_NET_ACTIVE_WINDOW != None &&
+	    ev->xclient.message_type == _XA_NET_ACTIVE_WINDOW ){
+		Window target = (Window)ev->xclient.data.l[2];
+		if( target == None ){
+			/* Drop focus to the desktop */
+			SetFocus( NULL );
+		} else if( XFindContext( dpy, target, OxwmContext,
+		                         (caddr_t *)&tmp_win ) != XCNOENT ){
+			SetFocus( tmp_win );
+		}
+		return;
+	}
 
 	if( XFindContext( dpy, ev->xany.window, OxwmContext, (caddr_t *)&tmp_win )
 	   == XCNOENT ) return;
