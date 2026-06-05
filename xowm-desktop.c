@@ -1002,7 +1002,8 @@ int main(int argc, char **argv) {
 		XSetWindowAttributes wa;
 		wa.override_redirect = True;
 		wa.event_mask = ButtonPressMask | ButtonReleaseMask |
-			Button1MotionMask | ExposureMask | StructureNotifyMask;
+			Button1MotionMask | ExposureMask | StructureNotifyMask |
+			FocusChangeMask;
 		wa.bit_gravity = NorthWestGravity;
 		if (wallpaper_pm != None)
 			wa.background_pixmap = wallpaper_pm;
@@ -1157,6 +1158,16 @@ int main(int argc, char **argv) {
 		case Expose:
 			redraw_region(ev.xexpose.x, ev.xexpose.y,
 			              ev.xexpose.width, ev.xexpose.height);
+			break;
+
+		case FocusIn:
+			/* The X server gave us keyboard focus when the user clicked
+			 * the desktop. The window manager sees the desktop window as
+			 * the active window and switches the menubar to it. Drop
+			 * focus immediately so the menubar/global menu stays on the
+			 * real focused window. */
+			XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
+			XFlush(dpy);
 			break;
 
 		case ButtonPress:
