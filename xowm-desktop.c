@@ -27,6 +27,7 @@
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <X11/Xft/Xft.h>
+#include <X11/keysym.h>
 #include <X11/cursorfont.h>
 #include <Imlib2.h>
 #include <stdio.h>
@@ -57,12 +58,14 @@ typedef struct {
 	Imlib_Image    icon;
 	int            iw, ih;
 	char           label[128];
+	char           icon_name[128];
 	char           cmd[512];
 	int            x, y;          /* current position on desktop */
 	int            ox, oy;          /* original position (for snap-back) */
 	int            drag_dx, drag_dy;
 	unsigned long  last_click_ms;
 	unsigned char  selected;
+	unsigned char  kind;           /* 0=normal, 1=trash, 2=user-added */
 } DeskIcon;
 
 static DeskIcon        icons[MAX_ICONS];
@@ -97,9 +100,17 @@ static int             menu_idx = -1;  /* -1 = desktop, >=0 = icon */
 static int             menu_x, menu_y;
 static GC             menu_gc = None;
 #define MENU_ITEM_H    22
-#define MENU_W         120
-#define MENU_ITEMS     3
-static const char *menu_labels[] = { "Open", "Arrange Icons", "Refresh Desktop" };
+#define MENU_W         140
+#define MENU_ITEMS_MAX 4
+static const char *icon_menu_labels[] = {
+	"Open", "Delete", "Arrange Icons", "Refresh Desktop"
+};
+static const char *empty_menu_labels[] = {
+	"New Launcher...", "Arrange Icons", "Refresh Desktop"
+};
+static const char **menu_labels = icon_menu_labels;
+static int menu_count = 3;
+static int menu_is_icon = 0;     /* 1 if the current menu is the icon-context menu */
 
 static unsigned long now_ms(void) {
 	struct timespec ts;
@@ -411,6 +422,317 @@ static void selection_toggle(int idx) {
 	}
 }
 
+/* === LAUNCHER, DELETE, TRASH === */
+
+static void calc_icon_pos(int idx, int *out_x, int *out_y);  /* fwd decl */
+static void resolve_overlap(int idx);                       /* fwd decl */
+static void full_redraw(void);                              /* fwd decl */
+static void open_icon(int idx);
+static void delete_icon(int idx);
+static void new_launcher_dialog(void);
+
+static char *trash_dir_path(void) {
+	const char *home = getenv("HOME");
+	if (!home) home = "/tmp";
+	char *p = malloc(512);
+	snprintf(p, 512, "%s/.local/share/Trash/files/", home);
+	return p;
+}
+
+static void open_trash(void) {
+	char *td = trash_dir_path();
+	if (fork() == 0) {
+		execlp("xdg-open", "xdg-open", td, (char *)NULL);
+		_exit(1);
+	}
+	free(td);
+}
+
+static void open_icon(int idx) {
+	if (idx < 0 || idx >= nicons) return;
+	if (icons[idx].kind == 1) {
+		open_trash();
+		return;
+	}
+	if (fork() == 0) {
+		execl("/bin/sh", "sh", "-c", icons[idx].cmd, NULL);
+		_exit(1);
+	}
+}
+
+/* Add a Trash icon to the end of the icons array. */
+static void add_trash_icon(void) {
+	if (nicons >= MAX_ICONS) return;
+	DeskIcon *t = &icons[nicons];
+	memset(t, 0, sizeof(*t));
+	snprintf(t->label, sizeof(t->label), "Trash");
+	snprintf(t->icon_name, sizeof(t->icon_name), "trash");
+	snprintf(t->cmd, sizeof(t->cmd), "@trash");
+	t->x = MARGIN_RIGHT;
+	t->y = sh - ICON_WIN_H - MARGIN_RIGHT;
+	t->ox = t->x;
+	t->oy = t->y;
+	t->kind = 1;
+	t->selected = 0;
+	char *path = find_icon_in_theme("user-trash");
+	if (!path) path = find_icon_in_theme("trash");
+	if (path) {
+		load_icon_imlib(t, path);
+		free(path);
+	}
+	nicons++;
+}
+
+/* Modal text input. Returns a strdup'd string the caller must free, or NULL. */
+static char *prompt_string(const char *title, const char *prompt,
+                            const char *default_text) {
+	(void)title;
+	int w = 460, h = 80;
+	int x = (sw - w) / 2, y = (sh - h) / 2;
+	if (x < 0) x = 0;
+	if (y < 0) y = 0;
+
+	XSetWindowAttributes wa;
+	wa.override_redirect = True;
+	wa.event_mask = KeyPressMask | KeyReleaseMask | ExposureMask |
+	                ButtonPressMask | FocusChangeMask;
+	wa.background_pixel = WhitePixel(dpy, screen);
+	wa.border_pixel = BlackPixel(dpy, screen);
+	Window pw = XCreateWindow(dpy, root, x, y, w, h, 2,
+	                          CopyFromParent, InputOutput, CopyFromParent,
+	                          CWOverrideRedirect | CWEventMask |
+	                          CWBackPixel | CWBorderPixel, &wa);
+	XMapRaised(dpy, pw);
+	XSetInputFocus(dpy, pw, RevertToParent, CurrentTime);
+	XFlush(dpy);
+
+	char text[256] = "";
+	if (default_text) {
+		strncpy(text, default_text, sizeof(text) - 1);
+		text[sizeof(text) - 1] = '\0';
+	}
+	int text_len = strlen(text);
+
+	XftDraw *draw = XftDrawCreate(dpy, pw,
+		DefaultVisual(dpy, screen), DefaultColormap(dpy, screen));
+
+	int done = 0;
+	char *result = NULL;
+	XEvent ev;
+	while (!done) {
+		XNextEvent(dpy, &ev);
+		if (ev.xany.window != pw) continue;
+
+		switch (ev.type) {
+		case Expose:
+		case FocusOut:
+			if (draw && xft_font) {
+				XClearArea(dpy, pw, 0, 0, w, h, False);
+				if (prompt) {
+					XftDrawString8(draw, &xft_black, xft_font, 10, 22,
+						(const unsigned char *)prompt, strlen(prompt));
+				}
+				XftDrawString8(draw, &xft_black, xft_font, 10, 56,
+					(const unsigned char *)text, text_len);
+				XSetForeground(dpy, menu_gc, BlackPixel(dpy, screen));
+				XDrawRectangle(dpy, pw, menu_gc, 6, 36, w - 14, 24);
+			}
+			break;
+		case KeyPress: {
+			KeySym ks;
+			char buf[16];
+			int n = XLookupString(&ev.xkey, buf, sizeof(buf) - 1, &ks, NULL);
+			if (n > 0) buf[n] = '\0';
+
+			if (ks == XK_Return || ks == XK_KP_Enter) {
+				result = strdup(text);
+				done = 1;
+			} else if (ks == XK_Escape) {
+				result = NULL;
+				done = 1;
+			} else if (ks == XK_BackSpace || ks == XK_Delete) {
+				if (text_len > 0) {
+					text[--text_len] = '\0';
+					XClearArea(dpy, pw, 0, 0, w, h, True);
+				}
+			} else if (ks == XK_u && (ev.xkey.state & ControlMask)) {
+				text_len = 0;
+				text[0] = '\0';
+				XClearArea(dpy, pw, 0, 0, w, h, True);
+			} else if (n > 0 && !IsModifierKey(ks) && !IsCursorKey(ks) &&
+			           !IsFunctionKey(ks) && !IsMiscFunctionKey(ks) &&
+			           !IsKeypadKey(ks)) {
+				if (text_len + n < (int)sizeof(text) - 1) {
+					memcpy(text + text_len, buf, n);
+					text_len += n;
+					text[text_len] = '\0';
+					XClearArea(dpy, pw, 0, 0, w, h, True);
+				}
+			}
+			break;
+		}
+		}
+	}
+
+	if (draw) XftDrawDestroy(draw);
+	XDestroyWindow(dpy, pw);
+	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
+	XSync(dpy, False);
+	return result;
+}
+
+/* Look up the config file path actually used by main(). NULL on failure. */
+static const char *config_path_in_use = NULL;
+
+static void append_launcher_to_config(const char *icon_name, const char *label,
+                                       const char *cmd) {
+	if (!config_path_in_use) return;
+	FILE *fp = fopen(config_path_in_use, "a");
+	if (!fp) return;
+	fprintf(fp, "%s, %s, %s\n", icon_name, label, cmd);
+	fclose(fp);
+}
+
+/* Comment out the line matching this icon by name+label+cmd. */
+static int delete_from_config(int idx) {
+	if (idx < 0 || idx >= nicons) return -1;
+	if (!config_path_in_use) return -1;
+	FILE *fp = fopen(config_path_in_use, "r");
+	if (!fp) return -1;
+
+	char **lines = NULL;
+	int nlines = 0, cap = 0;
+	char buf[1024];
+	int deleted = 0;
+	while (fgets(buf, sizeof(buf), fp)) {
+		if (!deleted) {
+			/* Try to match. Match the first two fields exactly. */
+			int len = strlen(buf);
+			while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r'))
+				buf[--len] = '\0';
+			/* Compare icon_name + comma+space + label + comma+space prefix. */
+			char want[1024];
+			snprintf(want, sizeof(want), "%s, %s,",
+				icons[idx].icon_name, icons[idx].label);
+			if (strncmp(buf, want, strlen(want)) == 0) {
+				deleted = 1;
+				continue;
+			}
+		}
+		if (nlines + 1 > cap) {
+			cap = cap ? cap * 2 : 32;
+			lines = realloc(lines, cap * sizeof(char *));
+			if (!lines) { fclose(fp); return -1; }
+		}
+		lines[nlines++] = strdup(buf);
+	}
+	fclose(fp);
+
+	if (!deleted) {
+		for (int i = 0; i < nlines; i++) free(lines[i]);
+		free(lines);
+		return -1;
+	}
+
+	fp = fopen(config_path_in_use, "w");
+	if (!fp) {
+		for (int i = 0; i < nlines; i++) free(lines[i]);
+		free(lines);
+		return -1;
+	}
+	for (int i = 0; i < nlines; i++) {
+		fputs(lines[i], fp);
+		free(lines[i]);
+	}
+	fclose(fp);
+	free(lines);
+	return 0;
+}
+
+/* Remove icon at idx from the array, shifting later icons down. */
+static void remove_icon_from_array(int idx) {
+	if (idx < 0 || idx >= nicons) return;
+	if (icons[idx].icon) {
+		imlib_context_set_image(icons[idx].icon);
+		imlib_free_image();
+	}
+	for (int j = idx; j < nicons - 1; j++) {
+		icons[j] = icons[j + 1];
+	}
+	nicons--;
+	memset(&icons[nicons], 0, sizeof(icons[0]));
+}
+
+/* Show dialog, add a new launcher. */
+static void new_launcher_dialog(void) {
+	char *label = prompt_string("New Launcher",
+		"Label (e.g. Firefox):", "");
+	if (!label || !label[0]) { free(label); return; }
+
+	char *cmd = prompt_string("New Launcher",
+		"Command (e.g. firefox %u):", "");
+	if (!cmd || !cmd[0]) { free(label); free(cmd); return; }
+
+	char *iname = prompt_string("New Launcher",
+		"Icon theme name (e.g. firefox):", label);
+	if (!iname || !iname[0]) { free(label); free(cmd); if (iname) free(iname); return; }
+
+	if (nicons >= MAX_ICONS) {
+		fprintf(stderr, "oxwm-desktop: max icons reached\n");
+		free(label); free(cmd); free(iname);
+		return;
+	}
+
+	DeskIcon *d = &icons[nicons];
+	memset(d, 0, sizeof(*d));
+	strncpy(d->label, label, 127); d->label[127] = '\0';
+	strncpy(d->icon_name, iname, 127); d->icon_name[127] = '\0';
+	strncpy(d->cmd, cmd, 511); d->cmd[511] = '\0';
+	d->kind = 2;  /* user-added */
+	d->selected = 0;
+
+	char *path = find_icon_in_theme(iname);
+	if (path) {
+		load_icon_imlib(d, path);
+		free(path);
+	}
+
+	calc_icon_pos(nicons, &d->x, &d->y);
+	d->ox = d->x;
+	d->oy = d->y;
+	d->last_click_ms = 0;
+	nicons++;
+	resolve_overlap(nicons - 1);
+
+	append_launcher_to_config(iname, label, cmd);
+
+	full_redraw();
+	free(label); free(cmd); free(iname);
+}
+
+/* Delete an icon (refuses on Trash). */
+static void delete_icon(int idx) {
+	if (idx < 0 || idx >= nicons) return;
+	if (icons[idx].kind == 1) {
+		/* Trash — refuse */
+		return;
+	}
+	if (icons[idx].kind == 0) {
+		/* From config — comment out the line. */
+		if (delete_from_config(idx) < 0) {
+			/* Fall back to session-only: still remove from array. */
+		}
+	}
+	/* kind == 2: user-added this session; just remove. */
+	remove_icon_from_array(idx);
+	if (drag_idx == idx || drag_idx >= nicons) {
+		drag_active = 0;
+		drag_idx = -1;
+	} else if (drag_idx > idx) {
+		drag_idx--;
+	}
+}
+
 /* === CONTEXT MENU === */
 static void create_menu_window(void) {
 	if (menu_win) return;
@@ -422,7 +744,7 @@ static void create_menu_window(void) {
 	wa.background_pixel = WhitePixel(dpy, screen);
 	wa.border_pixel = BlackPixel(dpy, screen);
 	menu_win = XCreateWindow(dpy, root, 0, 0, MENU_W,
-		MENU_ITEMS * MENU_ITEM_H, 1,
+		MENU_ITEMS_MAX * MENU_ITEM_H, 1,
 		CopyFromParent, InputOutput, CopyFromParent,
 		CWOverrideRedirect | CWEventMask | CWBackPixel | CWBorderPixel, &wa);
 
@@ -432,11 +754,14 @@ static void create_menu_window(void) {
 	XDefineCursor(dpy, menu_win, arrow);
 }
 
-static void show_menu(int x, int y, int idx) {
+static void show_menu(int x, int y, int idx, const char **labels, int count) {
 	if (!menu_win) create_menu_window();
 	menu_active = 1;
 	menu_hovered = -1;
 	menu_idx = idx;
+	menu_labels = labels;
+	menu_count = count;
+	menu_is_icon = (labels == icon_menu_labels);
 	menu_x = x;
 	menu_y = y;
 
@@ -444,10 +769,11 @@ static void show_menu(int x, int y, int idx) {
 	if (menu_x < 0) menu_x = 0;
 	if (menu_y < 0) menu_y = 0;
 	if (menu_x + MENU_W > sw) menu_x = sw - MENU_W - 2;
-	if (menu_y + MENU_ITEMS * MENU_ITEM_H > sh)
-		menu_y = sh - MENU_ITEMS * MENU_ITEM_H - 2;
+	if (menu_y + menu_count * MENU_ITEM_H > sh)
+		menu_y = sh - menu_count * MENU_ITEM_H - 2;
 
 	XMoveWindow(dpy, menu_win, menu_x, menu_y);
+	XResizeWindow(dpy, menu_win, MENU_W, menu_count * MENU_ITEM_H);
 	XMapRaised(dpy, menu_win);
 }
 
@@ -461,7 +787,7 @@ static void hide_menu(void) {
 static void draw_menu(void) {
 	if (!menu_gc) return;
 
-	for (int i = 0; i < MENU_ITEMS; i++) {
+	for (int i = 0; i < menu_count; i++) {
 		int iy = i * MENU_ITEM_H;
 		/* Hilite if hovering */
 		if (i == menu_hovered) {
@@ -479,13 +805,13 @@ static void draw_menu(void) {
 
 	/* Outer border */
 	XSetForeground(dpy, menu_gc, BlackPixel(dpy, screen));
-	XDrawRectangle(dpy, menu_win, menu_gc, 0, 0, MENU_W - 1, MENU_ITEMS * MENU_ITEM_H - 1);
+	XDrawRectangle(dpy, menu_win, menu_gc, 0, 0, MENU_W - 1, menu_count * MENU_ITEM_H - 1);
 }
 
 static int menu_hit(int x, int y) {
 	if (x < 0 || x >= MENU_W) return -1;
 	int item = y / MENU_ITEM_H;
-	if (item < 0 || item >= MENU_ITEMS) return -1;
+	if (item < 0 || item >= menu_count) return -1;
 	return item;
 }
 
@@ -595,8 +921,12 @@ static int load(const char *cfgfile) {
 		d->icon = NULL;
 		strncpy(d->label, lbl, 127);
 		d->label[127] = '\0';
+		strncpy(d->icon_name, icon_raw, 127);
+		d->icon_name[127] = '\0';
 		strncpy(d->cmd, cmd, 511);
 		d->cmd[511] = '\0';
+		d->kind = 0;
+		d->selected = 0;
 
 		char *icon_path = NULL;
 		if (strchr(icon_raw, '/')) {
@@ -737,10 +1067,13 @@ int main(int argc, char **argv) {
 			snprintf(def, sizeof(def), "%s/.mlvwm/desktop.conf", home);
 		cfgfile = def;
 	}
+	config_path_in_use = cfgfile;
 
 	if (!load(cfgfile)) {
 		fprintf(stderr, "oxwm-desktop: no icons loaded\n");
 	}
+
+	add_trash_icon();
 
 	/* Initial draw */
 	full_redraw();
@@ -764,22 +1097,40 @@ int main(int argc, char **argv) {
 			case ButtonRelease: {
 				int item = menu_hit(ev.xbutton.x, ev.xbutton.y);
 				int idx = menu_idx;
+				int was_icon_menu = menu_is_icon;
 				hide_menu();
-				if (item == 0 && idx >= 0) {
-					/* Open */
-					if (fork() == 0) {
-						execl("/bin/sh", "sh", "-c", icons[idx].cmd, NULL);
-						_exit(1);
+				if (item < 0) break;
+				if (was_icon_menu) {
+					/* Icon context: 0=Open 1=Delete 2=Arrange 3=Refresh */
+					if (item == 0 && idx >= 0) {
+						open_icon(idx);
+					} else if (item == 1 && idx >= 0) {
+						delete_icon(idx);
+						full_redraw();
+					} else if (item == 2) {
+						for (int i = 0; i < nicons; i++) {
+							calc_icon_pos(i, &icons[i].x, &icons[i].y);
+							icons[i].ox = icons[i].x;
+							icons[i].oy = icons[i].y;
+						}
+						full_redraw();
+					} else if (item == 3) {
+						full_redraw();
 					}
-				} else if (item == 1) {
-					/* Arrange Icons: reset all to grid */
-					for (int i = 0; i < nicons; i++) {
-						calc_icon_pos(i, &icons[i].x, &icons[i].y);
+				} else {
+					/* Empty context: 0=New Launcher 1=Arrange 2=Refresh */
+					if (item == 0) {
+						new_launcher_dialog();
+					} else if (item == 1) {
+						for (int i = 0; i < nicons; i++) {
+							calc_icon_pos(i, &icons[i].x, &icons[i].y);
+							icons[i].ox = icons[i].x;
+							icons[i].oy = icons[i].y;
+						}
+						full_redraw();
+					} else if (item == 2) {
+						full_redraw();
 					}
-					full_redraw();
-				} else if (item == 2) {
-					/* Refresh Desktop */
-					full_redraw();
 				}
 				break;
 			}
@@ -810,7 +1161,12 @@ int main(int argc, char **argv) {
 			if (ev.xbutton.button == 3) {
 				/* Right-click: context menu */
 				int idx = hit_test(ev.xbutton.x, ev.xbutton.y);
-				show_menu(ev.xbutton.x, ev.xbutton.y, idx);
+				if (idx >= 0)
+					show_menu(ev.xbutton.x, ev.xbutton.y, idx,
+					          icon_menu_labels, 4);
+				else
+					show_menu(ev.xbutton.x, ev.xbutton.y, -1,
+					          empty_menu_labels, 3);
 				break;
 			}
 			if (ev.xbutton.button != 1) break;
@@ -957,10 +1313,7 @@ int main(int argc, char **argv) {
 				} else {
 					unsigned long now = now_ms();
 					if (d->last_click_ms && now - d->last_click_ms < DBLCK_MS) {
-						if (fork() == 0) {
-							execl("/bin/sh", "sh", "-c", d->cmd, NULL);
-							_exit(1);
-						}
+						open_icon(drag_idx);
 						d->last_click_ms = 0;
 					} else {
 						d->last_click_ms = now;
