@@ -75,6 +75,9 @@ static int             dmenu_active = 0;
 static int             dmenu_hovered = -1;
 static int             dmenu_idx = -1;
 static int             dmenu_x, dmenu_y;
+static GC              field_bg_gc = None;
+static GC              field_bg_active_gc = None;
+static GC              placeholder_gc = None;
 static GC              dmenu_gc = None;
 #define DMENU_ITEM_H    22
 #define DMENU_W         150
@@ -563,89 +566,37 @@ typedef struct {
 } LauncherData;
 
 static void launcher_draw_titlebar(Window w, int fw, int th) {
-	int lp;
-	XColor sc;
-	GC hatch_gc = Scr.Gray1GC;
-	XSetForeground(dpy, Scr.Gray4GC, WhitePixel(dpy, Scr.screen));
-	if (XAllocNamedColor(dpy, DefaultColormap(dpy, Scr.screen),
-	                     "#e0e0e0", &sc, &sc))
-		XSetForeground(dpy, Scr.Gray4GC, sc.pixel);
-	XFillRectangle(dpy, w, Scr.Gray4GC, 4, 4, fw - 8, th - 4);
-	for (lp = 5; lp < th - 1; lp += 2) {
-		XDrawLine(dpy, w, hatch_gc, 4, lp, fw - 4, lp);
-	}
-	DrawShadowBox(0, 0, fw - 2, th, w, 1,
-	              Scr.WhiteGC, Scr.Gray2GC, SHADOW_ALL);
-	{
-		int title_w_px = 0, title_h_px = 0, title_off = 0;
-		char *t = "New Launcher";
-		StrWidthHeight(WINDOWFONT, &title_w_px, &title_h_px, &title_off,
-		               t, strlen(t));
-		XDRAWSTRING(dpy, w, WINDOWFONT, Scr.BlackGC,
-		            (fw - title_w_px) / 2,
-		            th / 2 - title_off + 1,
-		            t, strlen(t));
-	}
+	DrawTitleBarCore(w, fw, th, "New Launcher", 1);
 }
 
 static void launcher_draw_closebox(Window w, int cx, int cy) {
-	DrawShadowBox(cx, cy, 11, 11, w, 1,
-	              Scr.WhiteGC, Scr.BlackGC, SHADOW_ALL);
-	DrawShadowBox(cx + 1, cy + 1, 9, 9, w, 1,
-	              Scr.BlackGC, Scr.WhiteGC, SHADOW_ALL);
-	XDrawLine(dpy, w, Scr.BlackGC, cx + 3, cy + 3, cx + 7, cy + 7);
-	XDrawLine(dpy, w, Scr.BlackGC, cx + 7, cy + 3, cx + 3, cy + 7);
+	DrawCloseButton(w, cx, cy, BOXSIZE);
 }
 
 static void launcher_draw_input(Window w, int x, int y, int wpx, int hpx,
                                 const char *text, int active, GC fill_gc) {
-	int text_w = 0, text_off = 0;
-	char *mg = "Mg";
-	char *txt = (char *)text;
-	XFillRectangle(dpy, w, fill_gc, x, y, wpx, hpx);
-	DrawShadowBox(x, y, wpx, hpx, w, 1,
-	              Scr.WhiteGC, Scr.BlackGC, SHADOW_ALL);
-	DrawShadowBox(x + 1, y + 1, wpx - 2, hpx - 2, w, 1,
-	              Scr.BlackGC, Scr.WhiteGC, SHADOW_ALL);
-	StrWidthHeight(WINDOWFONT, NULL, NULL, &text_off, mg, 2);
-	XDRAWSTRING(dpy, w, WINDOWFONT, Scr.BlackGC,
-	            x + 4, y + hpx / 2 - text_off + 5,
-	            txt, strlen(txt));
-	if (active) {
-		StrWidthHeight(WINDOWFONT, &text_w, NULL, NULL,
-		               txt, strlen(txt));
-		XDrawLine(dpy, w, Scr.BlackGC,
-		          x + 4 + text_w + 1, y + 3,
-		          x + 4 + text_w + 1, y + hpx - 3);
-	}
+	DrawInputField(w, x, y, wpx, hpx, text, active, fill_gc);
 }
 
 static void launcher_draw_button(Window w, int x, int y, int wpx, int hpx,
                                   const char *label, int active) {
-	int lw = 0, lh = 0, lo = 0;
-	char *l = (char *)label;
-	GC bg = active ? Scr.Gray4GC : Scr.WhiteGC;
-	XFillRectangle(dpy, w, bg, x, y, wpx, hpx);
-	DrawShadowBox(x, y, wpx, hpx, w, 1,
-	              Scr.WhiteGC, Scr.BlackGC, SHADOW_ALL);
-	DrawShadowBox(x + 1, y + 1, wpx - 2, hpx - 2, w, 1,
-	              Scr.BlackGC, Scr.WhiteGC, SHADOW_ALL);
-	StrWidthHeight(WINDOWFONT, &lw, &lh, &lo, l, strlen(l));
-	XDRAWSTRING(dpy, w, WINDOWFONT, Scr.BlackGC,
-	            x + (wpx - lw) / 2,
-	            y + hpx / 2 - lo + 4,
-	            l, strlen(l));
+	DrawPushButton(w, x, y, wpx, hpx, label, active);
 }
 
-#define LDR_PADDING     10
-#define LDR_ROW_H       32
-#define LDR_LABEL_W     80
-#define LDR_IN_H        22
-#define LDR_BTN_W       80
-#define LDR_BTN_H       24
-#define LDR_FW          420
-#define LDR_FH          210
-#define LDR_TH          18
+#define LDR_MARGIN          2
+#define LDR_ROW_H          32
+#define LDR_LABEL_W        80
+#define LDR_IN_H           22
+#define LDR_BTN_W          80
+#define LDR_BTN_H          24
+#define LDR_BTN_GAP        6
+#define LDR_LABEL_INPUT_GAP 4
+#define LDR_BTN_SPACING    10
+#define LDR_TEXT_XPAD      4
+#define LDR_TEXT_BASELINE  5
+#define LDR_FW             420
+#define LDR_FH             (LDR_TH + 2*LDR_MARGIN + 3*LDR_ROW_H + LDR_BTN_GAP + LDR_BTN_H + 2*LDR_MARGIN)
+#define LDR_TH             TITLE_HEIGHT
 
 typedef struct {
 	Window w;
@@ -662,8 +613,6 @@ typedef struct {
 	int in_button;
 	int cancelled;
 	int done;
-	GC field_bg;
-	GC field_bg_active;
 } LDState;
 
 static void ld_redraw(LDState *s) {
@@ -672,18 +621,7 @@ static void ld_redraw(LDState *s) {
 	Window w = s->w;
 	const int FW = LDR_FW, FH = LDR_FH, TH = LDR_TH;
 
-	XClearWindow(dpy, w);
-	XSetForeground(dpy, Scr.WhiteGC, WhitePixel(dpy, Scr.screen));
-	XFillRectangle(dpy, w, Scr.WhiteGC, 0, 0, FW, FH);
-	DrawShadowBox(0, 0, FW, FH, w, 2,
-	              Scr.WhiteGC, Scr.Gray2GC, SHADOW_ALL);
-	DrawShadowBox(3, 3, FW - 6, FH - 6, w, 2,
-	              Scr.Gray2GC, Scr.WhiteGC, SHADOW_ALL);
-	XSetForeground(dpy, Scr.BlackGC, BlackPixel(dpy, Scr.screen));
-	XDrawLine(dpy, w, Scr.BlackGC, 0, FH - 2, FW, FH - 2);
-	XDrawLine(dpy, w, Scr.BlackGC, 0, FH - 1, FW, FH - 1);
-	XDrawLine(dpy, w, Scr.BlackGC, FW - 2, 0, FW - 2, FH);
-	XDrawLine(dpy, w, Scr.BlackGC, FW - 1, 0, FW - 1, FH);
+	DrawWindowFrame(w, FW, FH);
 
 	launcher_draw_titlebar(w, FW, TH);
 	launcher_draw_closebox(w, s->cb_x, s->cb_y);
@@ -692,29 +630,21 @@ static void ld_redraw(LDState *s) {
 		l = (char *)s->labels[i];
 		StrWidthHeight(WINDOWFONT, &lw, &lh, &lo, l, strlen(l));
 		XDRAWSTRING(dpy, w, WINDOWFONT, Scr.BlackGC,
-		            LDR_PADDING, s->rows_y[i] + LDR_IN_H / 2 - lo + 4,
+		            LDR_MARGIN, s->rows_y[i] + LDR_IN_H / 2 - lo + LDR_TEXT_BASELINE - 1,
 		            l, strlen(l));
 		launcher_draw_input(w, s->input_x, s->rows_y[i], s->input_w, LDR_IN_H,
 		                    s->fields[i],
 		                    !s->in_button && s->active == i,
 		                    (s->active == i && !s->in_button)
-		                        ? s->field_bg_active : s->field_bg);
+		                        ? field_bg_active_gc : field_bg_gc);
 		if (s->lens[i] == 0 && (!s->in_button && s->active == i)) {
 			int text_off = 0;
-			char *mg = "Mg";
 			char *ph = (char *)s->placeholders[i];
-			XColor sc;
-			GC gc = XCreateGC(dpy, w, 0, NULL);
-			if (XAllocNamedColor(dpy, DefaultColormap(dpy, Scr.screen),
-			                     "#888888", &sc, &sc))
-				XSetForeground(dpy, gc, sc.pixel);
-			else
-				XSetForeground(dpy, gc, BlackPixel(dpy, Scr.screen));
-			StrWidthHeight(WINDOWFONT, NULL, NULL, &text_off, mg, 2);
-			XDRAWSTRING(dpy, w, WINDOWFONT, gc,
-			            s->input_x + 4, s->rows_y[i] + LDR_IN_H / 2 - text_off + 5,
+			StrWidthHeight(WINDOWFONT, NULL, NULL, &text_off, "Mg", 2);
+			XDRAWSTRING(dpy, w, WINDOWFONT, placeholder_gc,
+			            s->input_x + LDR_TEXT_XPAD,
+			            s->rows_y[i] + LDR_IN_H / 2 - text_off + LDR_TEXT_BASELINE,
 			            ph, strlen(ph));
-			XFreeGC(dpy, gc);
 		}
 	}
 	launcher_draw_button(w, s->btn_ok_x, s->btn_y, LDR_BTN_W, LDR_BTN_H,
@@ -742,7 +672,6 @@ static int ld_btn_at(LDState *s, int x, int y) {
 static int RunLauncherDialog(LauncherData *out) {
 	LDState s;
 	XSetWindowAttributes wa;
-	XColor sc;
 	XEvent ev;
 	int fx = (sw - LDR_FW) / 2, fy = (sh - LDR_FH) / 3;
 
@@ -756,16 +685,16 @@ static int RunLauncherDialog(LauncherData *out) {
 	s.placeholders[0] = "Firefox";
 	s.placeholders[1] = "firefox %u";
 	s.placeholders[2] = "firefox";
-	s.rows_y[0] = LDR_TH + LDR_PADDING;
-	s.rows_y[1] = LDR_TH + LDR_PADDING + LDR_ROW_H;
-	s.rows_y[2] = LDR_TH + LDR_PADDING + 2 * LDR_ROW_H;
-	s.input_x = LDR_PADDING + LDR_LABEL_W + 4;
-	s.input_w = LDR_FW - s.input_x - LDR_PADDING;
-	s.btn_y = LDR_TH + LDR_PADDING + 3 * LDR_ROW_H + 6;
-	s.btn_ok_x = (LDR_FW - 2 * LDR_BTN_W - 10) / 2;
-	s.btn_cancel_x = s.btn_ok_x + LDR_BTN_W + 10;
-	s.cb_x = 6;
-	s.cb_y = LDR_TH / 2 - 5;
+	s.rows_y[0] = LDR_TH + LDR_MARGIN;
+	s.rows_y[1] = LDR_TH + LDR_MARGIN + LDR_ROW_H;
+	s.rows_y[2] = LDR_TH + LDR_MARGIN + 2 * LDR_ROW_H;
+	s.input_x = LDR_MARGIN + LDR_LABEL_W + LDR_LABEL_INPUT_GAP;
+	s.input_w = LDR_FW - s.input_x - LDR_MARGIN;
+	s.btn_y = LDR_TH + LDR_MARGIN + 3 * LDR_ROW_H + LDR_BTN_GAP;
+	s.btn_ok_x = (LDR_FW - 2 * LDR_BTN_W - LDR_BTN_SPACING) / 2;
+	s.btn_cancel_x = s.btn_ok_x + LDR_BTN_W + LDR_BTN_SPACING;
+	s.cb_x = Scr.flags & SYSTEM8 ? 2 : BOXSIZE - 3;
+	s.cb_y = (LDR_TH - BOXSIZE) / 2;
 	s.cancelled = 1;
 
 	wa.override_redirect = True;
@@ -778,15 +707,6 @@ static int RunLauncherDialog(LauncherData *out) {
 	                    CWOverrideRedirect | CWEventMask |
 	                    CWBackPixel | CWBorderPixel, &wa);
 	XMapRaised(dpy, s.w);
-
-	s.field_bg = XCreateGC(dpy, s.w, 0, NULL);
-	XSetForeground(dpy, s.field_bg, WhitePixel(dpy, Scr.screen));
-	s.field_bg_active = XCreateGC(dpy, s.w, 0, NULL);
-	if (XAllocNamedColor(dpy, DefaultColormap(dpy, Scr.screen),
-	                     "#ffffe0", &sc, &sc))
-		XSetForeground(dpy, s.field_bg_active, sc.pixel);
-	else
-		XSetForeground(dpy, s.field_bg_active, WhitePixel(dpy, Scr.screen));
 
 	XSetInputFocus(dpy, s.w, RevertToParent, CurrentTime);
 	ld_redraw(&s);
@@ -809,8 +729,8 @@ static int RunLauncherDialog(LauncherData *out) {
 		case ButtonPress: {
 			int x = ev.xbutton.x, y = ev.xbutton.y;
 			int fi, bi;
-			if (x >= s.cb_x && x < s.cb_x + 11 &&
-			    y >= s.cb_y && y < s.cb_y + 11) {
+			if (x >= s.cb_x && x < s.cb_x + BOXSIZE &&
+			    y >= s.cb_y && y < s.cb_y + BOXSIZE) {
 				s.cancelled = 1; s.done = 1;
 				break;
 			}
@@ -906,8 +826,6 @@ static int RunLauncherDialog(LauncherData *out) {
 	XUngrabPointer(dpy, CurrentTime);
 	XUngrabKeyboard(dpy, CurrentTime);
 	XDestroyWindow(dpy, s.w);
-	XFreeGC(dpy, s.field_bg);
-	XFreeGC(dpy, s.field_bg_active);
 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 	XSync(dpy, False);
 
@@ -983,8 +901,7 @@ static void create_dmenu_window(void) {
 
 	XSetWindowAttributes wa;
 	wa.override_redirect = True;
-	wa.event_mask = ButtonPressMask | ButtonReleaseMask |
-		ExposureMask | PointerMotionMask;
+	wa.event_mask = ExposureMask;
 	wa.background_pixel = WhitePixel(dpy, Scr.screen);
 	wa.border_pixel = BlackPixel(dpy, Scr.screen);
 	dmenu_win = XCreateWindow(dpy, Scr.Root, 0, 0, DMENU_W, 5 * DMENU_ITEM_H, 1,
@@ -1029,6 +946,64 @@ static void hide_dmenu(void) {
 	dmenu_idx = -1;
 }
 
+static int dmenu_hit_root(int x, int y);
+static void dmenu_action(int item);
+
+static void press_dmenu(void) {
+	XEvent ev;
+	int ignore = 1;
+	int done = 0;
+	int activated_item = -1;
+	int item;
+	int root_x, root_y, win_x, win_y;
+	Window junk_root, junk_child;
+	unsigned int mask;
+
+	if (!GrabEvent(DEFAULT)) {
+		XBell(dpy, 30);
+		hide_dmenu();
+		return;
+	}
+
+	while (!done) {
+		XMaskEvent(dpy, ExposureMask | ButtonReleaseMask | ButtonPressMask |
+		            PointerMotionMask | ButtonMotionMask, &ev);
+		switch (ev.type) {
+		case Expose:
+			if (dmenu_active && ev.xany.window == dmenu_win &&
+			    ev.xexpose.count == 0)
+				draw_dmenu();
+			break;
+		case MotionNotify:
+			if (dmenu_active) {
+				XQueryPointer(dpy, Scr.Root, &junk_root, &junk_child,
+				              &root_x, &root_y, &win_x, &win_y, &mask);
+				item = dmenu_hit_root(root_x, root_y);
+				if (item != dmenu_hovered) {
+					dmenu_hovered = item;
+					draw_dmenu();
+				}
+			}
+			break;
+		case ButtonRelease:
+			if (ignore) {
+				ignore = 0;
+			} else {
+				XQueryPointer(dpy, Scr.Root, &junk_root, &junk_child,
+				              &root_x, &root_y, &win_x, &win_y, &mask);
+				activated_item = dmenu_hit_root(root_x, root_y);
+				done = 1;
+			}
+			break;
+		case ButtonPress:
+			break;
+		}
+	}
+
+	UnGrabEvent();
+	dmenu_action(activated_item);
+}
+
 static void draw_dmenu(void) {
 	if (!dmenu_gc) return;
 
@@ -1051,25 +1026,10 @@ static void draw_dmenu(void) {
 	XDrawRectangle(dpy, dmenu_win, dmenu_gc, 0, 0, DMENU_W - 1, dmenu_count * DMENU_ITEM_H - 1);
 }
 
-static int dmenu_hit(int x, int y) {
-	if (x < 0 || x >= DMENU_W) return -1;
-	int item = y / DMENU_ITEM_H;
-	if (item < 0 || item >= dmenu_count) return -1;
-	return item;
-}
-
 static int dmenu_hit_root(int x, int y) {
 	if (x < dmenu_x || x >= dmenu_x + DMENU_W) return -1;
 	if (y < dmenu_y || y >= dmenu_y + dmenu_count * DMENU_ITEM_H) return -1;
 	return (y - dmenu_y) / DMENU_ITEM_H;
-}
-
-static void dmenu_set_hover(int x, int y) {
-	int item = dmenu_hit(x, y);
-	if (item != dmenu_hovered) {
-		dmenu_hovered = item;
-		draw_dmenu();
-	}
 }
 
 static void calc_icon_pos(int idx, int *out_x, int *out_y) {
@@ -1247,25 +1207,9 @@ static void dmenu_action(int item) {
 }
 
 static void handle_dmenu_event(XEvent *ev) {
-	switch (ev->type) {
-	case Expose:
+	if (ev->type == Expose && dmenu_active &&
+	    ev->xany.window == dmenu_win && ev->xexpose.count == 0)
 		draw_dmenu();
-		break;
-	case MotionNotify:
-		dmenu_set_hover(ev->xmotion.x, ev->xmotion.y);
-		break;
-	case ButtonPress:
-		fprintf(stderr, "DBG dmenu: press at %d,%d\n",
-			ev->xbutton.x, ev->xbutton.y);
-		break;
-	case ButtonRelease: {
-		int item = dmenu_hit(ev->xbutton.x, ev->xbutton.y);
-		fprintf(stderr, "DBG dmenu: release at %d,%d item=%d\n",
-			ev->xbutton.x, ev->xbutton.y, item);
-		dmenu_action(item);
-		break;
-	}
-	}
 }
 
 static void send_drop_focus(void) {
@@ -1285,7 +1229,7 @@ static void send_drop_focus(void) {
 }
 
 void HandleDesktopEvent( XEvent *ev ) {
-	if (dmenu_active && ev->xany.window == dmenu_win) {
+	if (ev->xany.window == dmenu_win) {
 		handle_dmenu_event(ev);
 		return;
 	}
@@ -1304,11 +1248,6 @@ void HandleDesktopEvent( XEvent *ev ) {
 
 	case ButtonPress: {
 		send_drop_focus();
-		if (dmenu_active) {
-			if (dmenu_hit_root(ev->xbutton.x, ev->xbutton.y) >= 0)
-				break;
-			hide_dmenu();
-		}
 
 		if (ev->xbutton.button == 3) {
 			int idx = hit_test(ev->xbutton.x, ev->xbutton.y);
@@ -1318,6 +1257,7 @@ void HandleDesktopEvent( XEvent *ev ) {
 			else
 				show_dmenu(ev->xbutton.x, ev->xbutton.y, -1,
 				          empty_menu_labels, 3);
+			press_dmenu();
 			break;
 		}
 		if (ev->xbutton.button != 1) break;
@@ -1438,13 +1378,6 @@ void HandleDesktopEvent( XEvent *ev ) {
 		break;
 
 	case ButtonRelease:
-		if (dmenu_active) {
-			int item = dmenu_hit_root(ev->xbutton.x, ev->xbutton.y);
-			if (item >= 0) {
-				dmenu_action(item);
-				break;
-			}
-		}
 		if (!drag_active || drag_idx < 0) break;
 
 		{
@@ -1493,6 +1426,9 @@ void DestroyDesktop( void ) {
 	if (dmenu_gc) { XFreeGC(dpy, dmenu_gc); dmenu_gc = None; }
 	if (dmenu_win) { XDestroyWindow(dpy, dmenu_win); dmenu_win = None; }
 	if (sel_gc) { XFreeGC(dpy, sel_gc); sel_gc = None; }
+	if (field_bg_gc) { XFreeGC(dpy, field_bg_gc); field_bg_gc = None; }
+	if (field_bg_active_gc) { XFreeGC(dpy, field_bg_active_gc); field_bg_active_gc = None; }
+	if (placeholder_gc) { XFreeGC(dpy, placeholder_gc); placeholder_gc = None; }
 	if (xft_font) { XftFontClose(dpy, xft_font); xft_font = NULL; }
 	XftColorFree(dpy, DefaultVisual(dpy, Scr.screen),
 		DefaultColormap(dpy, Scr.screen), &xft_black);
@@ -1542,6 +1478,24 @@ void InitDesktop( void ) {
 		else
 			sel_pixel = WhitePixel(dpy, Scr.screen);
 		sel_gc = XCreateGC(dpy, Scr.Root, 0, NULL);
+	}
+
+	{
+		XColor sc;
+		field_bg_gc = XCreateGC(dpy, Scr.Root, 0, NULL);
+		XSetForeground(dpy, field_bg_gc, WhitePixel(dpy, Scr.screen));
+		field_bg_active_gc = XCreateGC(dpy, Scr.Root, 0, NULL);
+		if (XAllocNamedColor(dpy, DefaultColormap(dpy, Scr.screen),
+		                     "#ffffe0", &sc, &sc))
+			XSetForeground(dpy, field_bg_active_gc, sc.pixel);
+		else
+			XSetForeground(dpy, field_bg_active_gc, WhitePixel(dpy, Scr.screen));
+		placeholder_gc = XCreateGC(dpy, Scr.Root, 0, NULL);
+		if (XAllocNamedColor(dpy, DefaultColormap(dpy, Scr.screen),
+		                     "#888888", &sc, &sc))
+			XSetForeground(dpy, placeholder_gc, sc.pixel);
+		else
+			XSetForeground(dpy, placeholder_gc, BlackPixel(dpy, Scr.screen));
 	}
 
 	home = getenv("HOME");
