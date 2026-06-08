@@ -52,6 +52,7 @@
 #include "config.h"
 #include "functions.h"
 #include "misc.h"
+#include "desktop.h"
 
 #include <X11/Xproto.h>
 #include <X11/Xatom.h>
@@ -342,10 +343,12 @@ void RepaintAllWindows( Window w )
 
 	XQueryTree( dpy, Scr.Root, &Scr.Root, &parent, &children, &nchildren );
 	for( lp=0; nchildren > lp; lp++ ){
-		if( children[lp]==w || children[lp]==Scr.MenuBar )	continue;
+		if( children[lp]==w || children[lp]==Scr.MenuBar ||
+		    children[lp]==Scr.Desktop )	continue;
 		XGetWindowAttributes( dpy, children[lp], &attributes );
 		if( IsUnmapped ==attributes.map_state )	continue;
-		if( children[lp] && MappedNotOverride(children[lp]) ){
+		if( children[lp] && children[lp]!=Scr.Desktop &&
+		    !attributes.override_redirect ){
 			HandleMapRequest( children[lp] );
 			if( XFindContext( dpy, children[lp],
 							 OxwmContext, (caddr_t *)&t)!=XCNOENT)
@@ -733,6 +736,8 @@ int main( int argc, char *argv[] )
 	ChangeDesk( message );
 	Scr.flags &= ~STARTING;
 	MapMenuBar( Scr.ActiveWin );
+
+	InitDesktop();
 
 	while( True )		WaitEvents();
 	return 0;

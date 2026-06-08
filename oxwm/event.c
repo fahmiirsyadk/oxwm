@@ -48,6 +48,7 @@
 #include "add_window.h"
 #include "functions.h"
 #include "misc.h"
+#include "desktop.h"
 #include "balloon.h"
 
 #include <X11/extensions/shape.h>
@@ -503,7 +504,13 @@ void MoveWindow( OxwmWindow *mw, XEvent *evp )
 								  ButtonReleaseMask, &ev))
 				if( ev.type == ButtonRelease) break;
 		switch( ev.type ){
-		case Expose: handle_expose( &ev ); break;
+		case Expose:
+			if( Scr.Desktop != None && ev.xany.window == Scr.Desktop )
+				RedrawDesktopRegion(ev.xexpose.x, ev.xexpose.y,
+					ev.xexpose.width, ev.xexpose.height);
+			else
+				handle_expose( &ev );
+			break;
 		case ButtonRelease:
 			if( !(Scr.flags&OPAQUEMOVE) )
 				XDrawRectangle( dpy, Scr.Root, Scr.RobberGC, mw->frame_x-drag_x,
@@ -891,7 +898,13 @@ void ResizeWindow( OxwmWindow *mw, XEvent *evp, Bool s_move )
 								  ButtonReleaseMask, &ev))
 				if( ev.type == ButtonRelease) break;
 		switch( ev.type ){
-		case Expose: handle_expose( &ev ); break;
+		case Expose:
+			if( Scr.Desktop != None && ev.xany.window == Scr.Desktop )
+				RedrawDesktopRegion(ev.xexpose.x, ev.xexpose.y,
+					ev.xexpose.width, ev.xexpose.height);
+			else
+				handle_expose( &ev );
+			break;
 		case ButtonRelease:
 			if( !(Scr.flags&OPAQUERESIZE) )
 				DrawResizeFrame( mw->frame_x, mw->frame_y, new_w, new_h, mw );
@@ -1908,6 +1921,10 @@ void HandleClientMessage( XEvent *ev )
 void HandleEvents( XEvent ev )
 {
 	strcpy( Scr.ErrorFunc, "HandleEvents" );
+	if( Scr.Desktop != None && IsDesktopWindow( ev.xany.window ) ){
+		HandleDesktopEvent( &ev );
+		return;
+	}
 	switch( ev.type ){
 	  case Expose:
 		strcpy( Scr.ErrorFunc, "Expose" );

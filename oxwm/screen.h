@@ -74,6 +74,7 @@ typedef struct ScreenInfo
 	Window Root;
 	Window MenuBar;
 	Window NoFocusWin;
+	Window Desktop;
 	Window lbCorner;
 	Window rbCorner;
 	OxwmWindow *ActiveWin;
