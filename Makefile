@@ -34,3 +34,5 @@ clean:
 install: all
 	install -d $(DESTDIR)$(HOME)/.local/bin
 	install -m 0755 $(WM_BIN) $(DESTDIR)$(HOME)/.local/bin/oxwm
+	install -d $(DESTDIR)$(HOME)/.config/picom
+	install -m 0644 contrib/picom/picom.conf $(DESTDIR)$(HOME)/.config/picom/picom.conf

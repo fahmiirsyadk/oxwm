@@ -438,14 +438,16 @@ void DrawShadeR( OxwmWindow *t, Bool on )
 	}
 }
 
-void DrawTitleBarCore( Window w, int fw, int th, const char *title, int active )
+void DrawTitleBarCore( Window w, int fw, int th, const char *title, int active,
+                       int clear )
 {
 	int w_px, off_px, len, lp;
 	GC dispgc;
 	char *t = (char *)title;
 	XColor sc;
 
-	XClearWindow( dpy, w );
+	if( clear )
+		XClearWindow( dpy, w );
 
 	len = strlen( title );
 
@@ -539,7 +541,7 @@ void SetTitleBar( OxwmWindow *t, Bool on_off )
 	}
 	while( w+20>drawable && titlelength>0 );
 
-	DrawTitleBarCore( t->title_w, t->frame_w, TITLE_HEIGHT, t->name, on_off );
+	DrawTitleBarCore( t->title_w, t->frame_w, TITLE_HEIGHT, t->name, on_off, 1 );
 
 	if( t->flags&CLOSER )		DrawCloseBox( t, on_off );
 	if( t->flags&MINMAXR )		DrawMinMax( t, on_off );
@@ -1097,13 +1099,20 @@ void DrawWindowFrame( Window w, int fw, int fh )
 {
 	XSetForeground( dpy, Scr.WhiteGC, WhitePixel( dpy, Scr.screen ) );
 	XFillRectangle( dpy, w, Scr.WhiteGC, 0, 0, fw, fh );
-	DrawShadowBox( 0, 0, fw, fh, w, 2,
-				  Scr.WhiteGC, Scr.Gray2GC, SHADOW_ALL );
-	DrawShadowBox( 3, 3, fw-6, fh-6, w, 2,
-				  Scr.Gray2GC, Scr.WhiteGC, SHADOW_ALL );
-	if( Scr.flags&SYSTEM8 )
+	if( Scr.flags&SYSTEM8 ){
+		DrawShadowBox( 0, 0, fw, fh, w, 2,
+					  Scr.WhiteGC, Scr.Gray3GC, SHADOW_ALL );
+		DrawShadowBox( 3, 3, fw-6, fh-6, w, 2,
+					  Scr.Gray3GC, Scr.WhiteGC, SHADOW_ALL );
 		DrawShadowBox( 2, 2, fw-4, fh-4, w, 2,
 					  Scr.Gray4GC, Scr.Gray4GC, SHADOW_ALL );
+	}
+	else{
+		DrawShadowBox( 0, 0, fw, fh, w, 2,
+					  Scr.WhiteGC, Scr.Gray3GC, SHADOW_ALL );
+		DrawShadowBox( 3, 3, fw-6, fh-6, w, 2,
+					  Scr.Gray3GC, Scr.WhiteGC, SHADOW_ALL );
+	}
 	XSetForeground( dpy, Scr.BlackGC, BlackPixel( dpy, Scr.screen ) );
 	XDrawLine( dpy, w, Scr.BlackGC, 0, fh-2, fw, fh-2 );
 	XDrawLine( dpy, w, Scr.BlackGC, 0, fh-1, fw, fh-1 );

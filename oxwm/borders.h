@@ -31,7 +31,8 @@ extern void DrawCloseBox( OxwmWindow *, Bool );
 extern void DrawShadeR( OxwmWindow *, Bool );
 
 void DrawWindowFrame( Window w, int fw, int fh );
-void DrawTitleBarCore( Window w, int fw, int th, const char *title, int active );
+void DrawTitleBarCore( Window w, int fw, int th, const char *title, int active,
+                       int clear );
 void DrawCloseButton( Window w, int cx, int cy, int size );
 void DrawInputField( Window w, int x, int y, int fw, int fh,
                      const char *text, int active, GC fill_gc );

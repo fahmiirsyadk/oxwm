@@ -99,6 +99,25 @@ Install icon theme for desktop icons:
     mkdir -p ~/.icons
     tar xzf customize/NineIcons48x.tar.gz -C ~/.icons/
 
+### Compositor (picom)
+
+OXWM does not bundle a compositor. For window transparency, rounded
+corners, and proper vsync, install [picom](https://github.com/yshui/picom):
+
+    sudo pacman -S --needed picom
+
+A recommended config is shipped in `contrib/picom/picom.conf` and
+installed to `~/.config/picom/picom.conf` by `make install`. It
+disables fade animations (big CPU saver) and unnecessary shadows on
+notifications, conky, etc.
+
+To start picom before oxwm, put this in your `~/.mlvwmrc` or `~/.xinitrc`:
+
+    Exec "picom" picom
+    # or in .xinitrc:
+    picom --config ~/.config/picom/picom.conf &
+    exec oxwm
+
 ## CREDITS & Thanks
 
 OXWM is a fork of [MLVWM](https://github.com/morgant/mlvwm), originally

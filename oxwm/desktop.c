@@ -135,10 +135,36 @@ static int wrap_text(const char *text, char out[MAX_LINES][64], int maxw) {
 	return n + (i > 0 ? 1 : 0);
 }
 
-static char *expand_path(const char *path) {
-	if (path[0] != '~') return strdup(path);
+static const char *home_dir(void) {
 	const char *home = getenv("HOME");
-	if (!home) home = "/tmp";
+	return (home && home[0]) ? home : NULL;
+}
+
+static char *xdg_path(const char *env, const char *fallback_subdir) {
+	const char *val = getenv(env);
+	if (val && val[0]) return strdup(val);
+	const char *home = home_dir();
+	if (!home) return NULL;
+	char *out = malloc(strlen(home) + strlen(fallback_subdir) + 2);
+	sprintf(out, "%s/%s", home, fallback_subdir);
+	return out;
+}
+
+static char *xdg_config_home(void) {
+	char *p = xdg_path("XDG_CONFIG_HOME", ".config");
+	return p;
+}
+
+static char *xdg_data_home(void) {
+	char *p = xdg_path("XDG_DATA_HOME", ".local/share");
+	return p;
+}
+
+static char *expand_path(const char *path) {
+	if (!path) return NULL;
+	if (path[0] != '~') return strdup(path);
+	const char *home = home_dir();
+	if (!home) return strdup(path);
 	char *out = malloc(strlen(home) + strlen(path) + 1);
 	strcpy(out, home);
 	strcat(out, path + 1);
@@ -146,27 +172,53 @@ static char *expand_path(const char *path) {
 }
 
 static char *find_default_wallpaper(void) {
-	static const char *candidates[] = {
-		"~/wallpapers/wallpaper.jpg",
-		"~/wallpapers/wallpaper.png",
-		"~/wallpapers/wallpaper2.jpg",
-		"~/wallpapers/wallpaper3.jpg",
-		"~/wallpapers/wallpaper4.jpg",
-		"~/wallpapers/wallpaper5.jpg",
-		"~/wallpapers/wallpaper6.jpg",
-		"~/Pictures/wallpaper.jpg",
-		NULL
+	static const char *filenames[] = {
+		"wallpaper.jpg", "wallpaper.png", "wallpaper2.jpg",
+		"wallpaper3.jpg", "wallpaper4.jpg", "wallpaper5.jpg",
+		"wallpaper6.jpg", NULL
 	};
-	for (int i = 0; candidates[i]; i++) {
-		char *p = expand_path(candidates[i]);
-		if (access(p, R_OK) == 0) return p;
-		free(p);
+	char *dirs[8];
+	int ndirs = 0;
+	char *xdg_data = xdg_data_home();
+	if (xdg_data) {
+		dirs[ndirs++] = xdg_data;
+		dirs[ndirs] = NULL;
+		char *wp = malloc(strlen(xdg_data) + 20);
+		sprintf(wp, "%s/wallpapers", xdg_data);
+		dirs[ndirs++] = wp;
 	}
+	const char *home = home_dir();
+	char *home_wp = NULL, *pics_wp = NULL;
+	if (home) {
+		home_wp = malloc(strlen(home) + 20);
+		sprintf(home_wp, "%s/wallpapers", home);
+		dirs[ndirs++] = home_wp;
+		pics_wp = malloc(strlen(home) + 30);
+		sprintf(pics_wp, "%s/Pictures/wallpapers", home);
+		dirs[ndirs++] = pics_wp;
+		char *pics = malloc(strlen(home) + 12);
+		sprintf(pics, "%s/Pictures", home);
+		dirs[ndirs++] = pics;
+	}
+	dirs[ndirs] = NULL;
+
+	for (int d = 0; dirs[d]; d++) {
+		for (int f = 0; filenames[f]; f++) {
+			char path[1024];
+			snprintf(path, sizeof(path), "%s/%s", dirs[d], filenames[f]);
+			if (access(path, R_OK) == 0) {
+				char *result = strdup(path);
+				for (int i = 0; i < ndirs; i++) free(dirs[i]);
+				return result;
+			}
+		}
+	}
+	for (int i = 0; i < ndirs; i++) free(dirs[i]);
 	return NULL;
 }
 
 static char *find_icon_in_theme(const char *name) {
-	static const char *dirs[] = {
+	static const char *subdirs[] = {
 		"apps/48", "apps/32", "apps/16",
 		"mimes/48", "mimes/32", "mimes/16",
 		"places/48", "places/32", "places/16",
@@ -177,15 +229,36 @@ static char *find_icon_in_theme(const char *name) {
 	};
 	static const char *exts[] = { ".png", ".xpm", ".ico", NULL };
 
-	const char *home = getenv("HOME");
-	if (!home) home = "/tmp";
+	const char *home = home_dir();
+	struct { const char *root; const char *icon_dir; } roots[4];
+	int nroots = 0;
 
-	for (int i = 0; dirs[i]; i++) {
-		for (int e = 0; exts[e]; e++) {
-			char path[512];
-			snprintf(path, sizeof(path), "%s/.icons/%s/%s/%s%s",
-				home, ICON_THEME, dirs[i], name, exts[e]);
-			if (access(path, R_OK) == 0) return strdup(path);
+	const char *xdg_data = getenv("XDG_DATA_HOME");
+	if (xdg_data && xdg_data[0]) {
+		roots[nroots].root = xdg_data;
+		roots[nroots].icon_dir = "icons";
+		nroots++;
+	}
+	if (home) {
+		roots[nroots].root = home;
+		roots[nroots].icon_dir = ".icons";
+		nroots++;
+		static char local_share[512];
+		snprintf(local_share, sizeof(local_share), "%s/.local/share", home);
+		roots[nroots].root = local_share;
+		roots[nroots].icon_dir = "icons";
+		nroots++;
+	}
+
+	for (int r = 0; r < nroots; r++) {
+		for (int i = 0; subdirs[i]; i++) {
+			for (int e = 0; exts[e]; e++) {
+				char path[512];
+				snprintf(path, sizeof(path), "%s/%s/%s/%s/%s%s",
+					roots[r].root, roots[r].icon_dir, ICON_THEME,
+					subdirs[i], name, exts[e]);
+				if (access(path, R_OK) == 0) return strdup(path);
+			}
 		}
 	}
 	return NULL;
@@ -418,23 +491,30 @@ static void delete_icon(int idx);
 static void new_launcher_dialog(void);
 
 static char *trash_dir_path(void) {
-	const char *home = getenv("HOME");
-	if (!home) home = "/tmp";
-	char *p = malloc(512);
-	snprintf(p, 512, "%s/.local/share/Trash/files/", home);
+	char *base = xdg_data_home();
+	if (!base) {
+		base = strdup("/tmp");
+	}
+	char *p = malloc(strlen(base) + 20);
+	sprintf(p, "%s/Trash/files/", base);
+	free(base);
 	return p;
 }
 
 static void ensure_trash_dir_exists(void) {
-	const char *home = getenv("HOME");
-	if (!home) home = "/tmp";
-	char path[512];
-	snprintf(path, sizeof(path), "%s/.local/share", home);
+	char *base = xdg_data_home();
+	if (!base) {
+		fprintf(stderr, "oxwm-desktop: cannot determine data dir for trash\n");
+		return;
+	}
+	char path[1024];
+	snprintf(path, sizeof(path), "%s", base);
 	mkdir(path, 0700);
-	snprintf(path, sizeof(path), "%s/.local/share/Trash", home);
+	snprintf(path, sizeof(path), "%s/Trash", base);
 	mkdir(path, 0700);
-	snprintf(path, sizeof(path), "%s/.local/share/Trash/files", home);
+	snprintf(path, sizeof(path), "%s/Trash/files", base);
 	mkdir(path, 0700);
+	free(base);
 }
 
 static void open_trash(void) {
@@ -486,9 +566,33 @@ static void add_trash_icon(void) {
 
 static void append_launcher_to_config(const char *icon_name, const char *label,
                                        const char *cmd) {
-	if (!config_path_in_use) return;
+	if (!config_path_in_use) {
+		fprintf(stderr, "oxwm-desktop: no config path set, cannot save launcher\n");
+		return;
+	}
+	char *slash = strrchr(config_path_in_use, '/');
+	if (slash && slash != config_path_in_use) {
+		char dir[1024];
+		int len = slash - config_path_in_use;
+		if (len >= (int)sizeof(dir)) len = sizeof(dir) - 1;
+		memcpy(dir, config_path_in_use, len);
+		dir[len] = '\0';
+		struct stat st;
+		if (stat(dir, &st) != 0) {
+			char mkcmd[1100];
+			snprintf(mkcmd, sizeof(mkcmd), "mkdir -p '%s'", dir);
+			if (system(mkcmd) != 0) {
+				fprintf(stderr, "oxwm-desktop: cannot create config dir '%s'\n", dir);
+				return;
+			}
+		}
+	}
 	FILE *fp = fopen(config_path_in_use, "a");
-	if (!fp) return;
+	if (!fp) {
+		fprintf(stderr, "oxwm-desktop: cannot open config '%s' for writing\n",
+			config_path_in_use);
+		return;
+	}
 	fprintf(fp, "%s, %s, %s\n", icon_name, label, cmd);
 	fclose(fp);
 }
@@ -566,11 +670,7 @@ typedef struct {
 } LauncherData;
 
 static void launcher_draw_titlebar(Window w, int fw, int th) {
-	DrawTitleBarCore(w, fw, th, "New Launcher", 1);
-}
-
-static void launcher_draw_closebox(Window w, int cx, int cy) {
-	DrawCloseButton(w, cx, cy, BOXSIZE);
+	DrawTitleBarCore(w, fw, th, "New Launcher", 1, 0);
 }
 
 static void launcher_draw_input(Window w, int x, int y, int wpx, int hpx,
@@ -603,7 +703,6 @@ typedef struct {
 	int input_x, input_w;
 	int rows_y[3];
 	int btn_y, btn_ok_x, btn_cancel_x;
-	int cb_x, cb_y;
 	const char *labels[3];
 	const char *placeholders[3];
 	char fields[3][128];
@@ -624,7 +723,10 @@ static void ld_redraw(LDState *s) {
 	DrawWindowFrame(w, FW, FH);
 
 	launcher_draw_titlebar(w, FW, TH);
-	launcher_draw_closebox(w, s->cb_x, s->cb_y);
+
+	XSetForeground(dpy, Scr.BlackGC, BlackPixel(dpy, Scr.screen));
+	XDrawLine(dpy, w, Scr.BlackGC, 0, TH, FW, TH);
+	XDrawLine(dpy, w, Scr.BlackGC, 0, TH + 1, FW, TH + 1);
 
 	for (i = 0; i < 3; i++) {
 		l = (char *)s->labels[i];
@@ -693,8 +795,6 @@ static int RunLauncherDialog(LauncherData *out) {
 	s.btn_y = LDR_TH + LDR_MARGIN + 3 * LDR_ROW_H + LDR_BTN_GAP;
 	s.btn_ok_x = (LDR_FW - 2 * LDR_BTN_W - LDR_BTN_SPACING) / 2;
 	s.btn_cancel_x = s.btn_ok_x + LDR_BTN_W + LDR_BTN_SPACING;
-	s.cb_x = Scr.flags & SYSTEM8 ? 2 : BOXSIZE - 3;
-	s.cb_y = (LDR_TH - BOXSIZE) / 2;
 	s.cancelled = 1;
 
 	wa.override_redirect = True;
@@ -729,11 +829,6 @@ static int RunLauncherDialog(LauncherData *out) {
 		case ButtonPress: {
 			int x = ev.xbutton.x, y = ev.xbutton.y;
 			int fi, bi;
-			if (x >= s.cb_x && x < s.cb_x + BOXSIZE &&
-			    y >= s.cb_y && y < s.cb_y + BOXSIZE) {
-				s.cancelled = 1; s.done = 1;
-				break;
-			}
 			fi = ld_field_at(&s, x, y);
 			if (fi >= 0) {
 				s.in_button = 0;
@@ -858,7 +953,7 @@ static void new_launcher_dialog(void) {
 	strncpy(d->label, label, 127); d->label[127] = '\0';
 	strncpy(d->icon_name, iname, 127); d->icon_name[127] = '\0';
 	strncpy(d->cmd, cmd, 511); d->cmd[511] = '\0';
-	d->kind = 2;
+	d->kind = 0;
 	d->selected = 0;
 
 	char *path = find_icon_in_theme(iname);
@@ -1502,8 +1597,34 @@ void InitDesktop( void ) {
 	if (!home) home = "/tmp";
 
 	{
-		FILE *probe = fopen(".oxwm-desktop.cfg", "r");
-		if (probe) {
+		static const char *probe_paths[] = {
+			NULL,
+			NULL,
+			NULL,
+			NULL
+		};
+		char *xdg_cfg = xdg_config_home();
+		char *oxwm_cfg = NULL;
+		char *mlvwm_cfg = NULL;
+		char *legacy_cfg = NULL;
+		int n = 0;
+		if (xdg_cfg) {
+			oxwm_cfg = malloc(strlen(xdg_cfg) + 20);
+			sprintf(oxwm_cfg, "%s/oxwm/desktop.conf", xdg_cfg);
+			probe_paths[n++] = oxwm_cfg;
+		}
+		if (home) {
+			mlvwm_cfg = malloc(strlen(home) + 30);
+			sprintf(mlvwm_cfg, "%s/.mlvwm/desktop.conf", home);
+			probe_paths[n++] = mlvwm_cfg;
+			legacy_cfg = malloc(strlen(home) + 30);
+			sprintf(legacy_cfg, "%s/.oxwm-desktop.cfg", home);
+			probe_paths[n++] = legacy_cfg;
+		}
+		probe_paths[n] = ".oxwm-desktop.cfg";
+		for (int p = 0; p <= n; p++) {
+			FILE *probe = fopen(probe_paths[p], "r");
+			if (!probe) continue;
 			char line[256];
 			while (fgets(line, sizeof(line), probe)) {
 				if (line[0] == '#' || line[0] == '\n') continue;
@@ -1533,7 +1654,12 @@ void InitDesktop( void ) {
 				}
 			}
 			fclose(probe);
+			break;
 		}
+		free(xdg_cfg);
+		free(oxwm_cfg);
+		free(mlvwm_cfg);
+		free(legacy_cfg);
 	}
 
 	if (bg_path && bg_path[0]) {
@@ -1595,9 +1721,13 @@ void InitDesktop( void ) {
 	}
 
 	if (!cfgfile) {
-		snprintf(def, sizeof(def), "%s/.oxwm/desktop.conf", home);
-		if (access(def, R_OK) != 0)
+		char *xdg_cfg = xdg_config_home();
+		if (xdg_cfg) {
+			snprintf(def, sizeof(def), "%s/oxwm/desktop.conf", xdg_cfg);
+			free(xdg_cfg);
+		} else {
 			snprintf(def, sizeof(def), "%s/.mlvwm/desktop.conf", home);
+		}
 		cfgfile = def;
 	}
 	config_path_in_use = cfgfile;
