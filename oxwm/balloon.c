@@ -285,7 +285,6 @@ void BalloonHelp( void )
 		return;
 	}
 
-printf("flags %x\n", tmp_win->flags );
 	if( Scr.Balloon==None )		CreateBalloonWindow();
 
 	BalloonSize( &one_line, &label_width, &offset, &width, &height, tmp_win );

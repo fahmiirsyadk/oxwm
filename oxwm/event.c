@@ -943,7 +943,7 @@ void ResizeWindow( OxwmWindow *mw, XEvent *evp, Bool s_move )
 					new_h = org_h + (y - pre_y)*ymotion;
 
 				if( new_w<(mw->flags&SBARH?4*SBAR_WH:0) )
-					new_w = (mw->flags*SBARH?4*SBAR_WH:0)+1;
+					new_w = (mw->flags&SBARH?4*SBAR_WH:0)+1;
 				if( new_h<(mw->flags&SBARV?4*SBAR_WH:0)+
 								(mw->flags&TITLE?TITLE_HEIGHT:0) )
 					new_h = (mw->flags&SBARV?4*SBAR_WH:0)+

@@ -1431,13 +1431,11 @@ void MapMenuBar( OxwmWindow *win )
 }
 
 void ChangeMenuLabel( MenuLabel *ml, char *newl, Icon *miniicon )
-{	
+{
 	if( newl==NULL && ml->xpm==miniicon )	return;
-	if( ml->LabelStr && !strcmp(ml->LabelStr, newl )){
-		if( ml->LabelStr )
-			free( ml->LabelStr );
-		ml->LabelStr = newl;
-	}
+	if( ml->LabelStr && ml->LabelStr != newl )
+		free( ml->LabelStr );
+	ml->LabelStr = newl;
 	ml->xpm = miniicon;
 	RedrawMenu( ml, False );
 }

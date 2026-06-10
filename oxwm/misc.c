@@ -46,6 +46,7 @@ char *LookUpFiles( char *path, char *filename, int mode )
 	char *find, *separator;
 	size_t find_size;
 
+	if( !filename ) return NULL;
 	if( !access( filename, mode ) ){
 		find = strdup( filename );
 		return find;
@@ -55,6 +56,10 @@ char *LookUpFiles( char *path, char *filename, int mode )
 		path=SkipSpace( path );
 		find_size = strlen(path)+strlen(filename)+2;
 		find = calloc( find_size, 1 );
+		if( !find ){
+			fprintf( stderr, "oxwm: out of memory in LookUpFiles\n" );
+			return NULL;
+		}
 		if( strchr( path, ':' )==NULL ){
 			snprintf( find, find_size, "%s/%s", path, filename );
 			path += strlen( path );

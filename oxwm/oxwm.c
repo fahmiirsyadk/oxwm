@@ -606,7 +606,12 @@ int main( int argc, char *argv[] )
 	}
 #endif
 	if( !(dpy = XOpenDisplay( display_name )) ){
-		fprintf( stderr, "can't open display %s\n",XDisplayName(display_name));
+		const char *disp = display_name ? display_name : getenv("DISPLAY");
+		fprintf( stderr, "oxwm: cannot open display '%s' (XDisplayName reports '%s')\n",
+		         disp ? disp : "(null)",
+		         XDisplayName(display_name) );
+		fprintf( stderr, "  check: is X server running? is $DISPLAY set correctly?\n" );
+		fprintf( stderr, "  try: export DISPLAY=:0  or  xhost +local:\n" );
 		exit( 1 );
 	}
     xfd = XConnectionNumber(dpy);

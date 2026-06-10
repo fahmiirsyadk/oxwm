@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <math.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <X11/Xutil.h>
@@ -56,8 +57,6 @@ static DeskIcon        icons[MAX_ICONS];
 static int             nicons;
 static XftFont        *xft_font;
 static XftColor        xft_black, xft_white, xft_gray;
-static unsigned long   sel_pixel;
-static GC              sel_gc = None;
 static int             sw, sh;
 static int             max_rows;
 static Pixmap          wallpaper_pm = None;
@@ -621,9 +620,16 @@ static int delete_from_config(int idx) {
 			}
 		}
 		if (nlines + 1 > cap) {
-			cap = cap ? cap * 2 : 32;
-			lines = realloc(lines, cap * sizeof(char *));
-			if (!lines) { fclose(fp); return -1; }
+			int new_cap = cap ? cap * 2 : 32;
+			char **new_lines = realloc(lines, new_cap * sizeof(char *));
+			if (!new_lines) {
+				for (int i = 0; i < nlines; i++) free(lines[i]);
+				free(lines);
+				fclose(fp);
+				return -1;
+			}
+			lines = new_lines;
+			cap = new_cap;
 		}
 		lines[nlines++] = strdup(buf);
 	}
@@ -1308,11 +1314,14 @@ static void handle_dmenu_event(XEvent *ev) {
 }
 
 static void send_drop_focus(void) {
+	static Atom a_net_active_window = None;
+	if (a_net_active_window == None)
+		a_net_active_window = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
 	XClientMessageEvent cm;
 	memset(&cm, 0, sizeof(cm));
 	cm.type = ClientMessage;
 	cm.window = Scr.Root;
-	cm.message_type = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+	cm.message_type = a_net_active_window;
 	cm.format = 32;
 	cm.data.l[0] = 0;
 	cm.data.l[1] = CurrentTime;
@@ -1520,7 +1529,6 @@ void DestroyDesktop( void ) {
 	}
 	if (dmenu_gc) { XFreeGC(dpy, dmenu_gc); dmenu_gc = None; }
 	if (dmenu_win) { XDestroyWindow(dpy, dmenu_win); dmenu_win = None; }
-	if (sel_gc) { XFreeGC(dpy, sel_gc); sel_gc = None; }
 	if (field_bg_gc) { XFreeGC(dpy, field_bg_gc); field_bg_gc = None; }
 	if (field_bg_active_gc) { XFreeGC(dpy, field_bg_active_gc); field_bg_active_gc = None; }
 	if (placeholder_gc) { XFreeGC(dpy, placeholder_gc); placeholder_gc = None; }
@@ -1564,16 +1572,6 @@ void InitDesktop( void ) {
 		DefaultColormap(dpy, Scr.screen), "white", &xft_white);
 	XftColorAllocName(dpy, DefaultVisual(dpy, Scr.screen),
 		DefaultColormap(dpy, Scr.screen), "#666666", &xft_gray);
-
-	{
-		XColor scol;
-		if (XAllocNamedColor(dpy, DefaultColormap(dpy, Scr.screen),
-		                     "#3a6cd8", &scol, &scol))
-			sel_pixel = scol.pixel;
-		else
-			sel_pixel = WhitePixel(dpy, Scr.screen);
-		sel_gc = XCreateGC(dpy, Scr.Root, 0, NULL);
-	}
 
 	{
 		XColor sc;
@@ -1624,7 +1622,14 @@ void InitDesktop( void ) {
 		probe_paths[n] = ".oxwm-desktop.cfg";
 		for (int p = 0; p <= n; p++) {
 			FILE *probe = fopen(probe_paths[p], "r");
-			if (!probe) continue;
+			if (!probe) {
+				if (Scr.flags & DEBUGOUT)
+					fprintf(stderr, "oxwm-desktop: probe '%s': %s\n",
+						probe_paths[p], strerror(errno));
+				continue;
+			}
+			if (Scr.flags & DEBUGOUT)
+				fprintf(stderr, "oxwm-desktop: using config '%s'\n", probe_paths[p]);
 			char line[256];
 			while (fgets(line, sizeof(line), probe)) {
 				if (line[0] == '#' || line[0] == '\n') continue;
@@ -1646,11 +1651,14 @@ void InitDesktop( void ) {
 					*ve-- = '\0';
 				}
 				if (!strcmp(k, "wallpaper") && v[0]) {
-					bg_path = v;
+					free((void *)bg_path);
+					bg_path = strdup(v);
 				} else if (!strcmp(k, "wallpaper_mode") && v[0]) {
-					bg_mode = v;
+					free((void *)bg_mode);
+					bg_mode = strdup(v);
 				} else if (!strcmp(k, "desktop_config") && v[0]) {
-					cfgfile = v;
+					free((void *)cfgfile);
+					cfgfile = strdup(v);
 				}
 			}
 			fclose(probe);
@@ -1675,6 +1683,8 @@ void InitDesktop( void ) {
 			free(def);
 		}
 	}
+	free((void *)bg_path);
+	if (bg_mode != (const char *)"fill") free((void *)bg_mode);
 
 	{
 		XSetWindowAttributes wa;

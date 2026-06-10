@@ -411,14 +411,18 @@ OxwmWindow *AddWindow( Window win )
 	Bool status;
 
 	tmp_win = calloc( 1, sizeof( OxwmWindow ) );
-	
+	if( tmp_win == (OxwmWindow *)0 ){
+		fprintf( stderr, "oxwm: out of memory in AddWindow\n" );
+		return NULL;
+	}
+
 	tmp_win->flags = NORMALWIN;
 	if( Scr.flags&SYSTEM8 )		tmp_win->flags |= SHADER;
 	tmp_win->size_w = Scr.MyDisplayWidth*90./100.;
 	tmp_win->size_h = Scr.MyDisplayHeight*90./100.;
 
 	tmp_win->miniicon = NULL;
-	
+
 	if( Scr.ActiveWin )
 		last = Scr.ActiveWin;
 	else

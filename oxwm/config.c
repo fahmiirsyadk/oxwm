@@ -606,7 +606,13 @@ XFontStruct **font,
 #endif
 
 #ifdef USE_LOCALE
-	asprintf(&fontname, "%s, %s", fontname, FALLBACK_FONT);
+	char *fallback_fontname = NULL;
+	if( asprintf( &fallback_fontname, "%s, %s", fontname, FALLBACK_FONT ) < 0 ){
+		DrawErrMsgOnMenu( "Out of memory building font name", "" );
+		return;
+	}
+	free( fontname );
+	fontname = fallback_fontname;
 	newfont = XCreateFontSet( dpy, fontname, &miss, &n_miss, &def );
 
 	if( Scr.flags & DEBUGOUT )
@@ -860,6 +866,17 @@ void ReadConfigFile( char *configfile )
 #endif
 	}
 	if( file==NULL || (fp=fopen( file, "r" ))==NULL ){
+		fprintf( stderr, "oxwm: cannot open config file '%s'", configfile );
+		if( file ){
+			fprintf( stderr, " (resolved to '%s')", file );
+		}
+		else {
+			const char *home = getenv("HOME");
+			fprintf( stderr, " (checked: $HOME=%s, %s, system path)",
+			         home ? home : "(unset)",
+			         is_default ? "legacy ~/.mlvwmrc" : "(no legacy fallback)" );
+		}
+		fprintf( stderr, "\n" );
 		DrawErrMsgOnMenu( "Can't open your config file. ", configfile );
 		if( file )	free( file );
 		return;
