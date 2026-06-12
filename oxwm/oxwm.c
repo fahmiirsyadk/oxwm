@@ -53,6 +53,7 @@
 #include "functions.h"
 #include "misc.h"
 #include "desktop.h"
+#include "dock.h"
 
 #include <X11/Xproto.h>
 #include <X11/Xatom.h>
@@ -344,7 +345,8 @@ void RepaintAllWindows( Window w )
 	XQueryTree( dpy, Scr.Root, &Scr.Root, &parent, &children, &nchildren );
 	for( lp=0; nchildren > lp; lp++ ){
 		if( children[lp]==w || children[lp]==Scr.MenuBar ||
-		    children[lp]==Scr.Desktop )	continue;
+		    children[lp]==Scr.Desktop ||
+		    children[lp]==Scr.DockWin )	continue;
 		XGetWindowAttributes( dpy, children[lp], &attributes );
 		if( IsUnmapped ==attributes.map_state )	continue;
 		if( children[lp] && children[lp]!=Scr.Desktop &&
@@ -738,6 +740,7 @@ int main( int argc, char *argv[] )
 		MapMenuBar( Scr.ActiveWin );
 		if( was_starting ) Scr.flags |= STARTING;
 	}
+	InitDock();
 	for( Scr.iconAnchor = Scr.IconMenu.m_item;
 		Scr.iconAnchor->next->next != NULL;
 		Scr.iconAnchor = Scr.iconAnchor->next );

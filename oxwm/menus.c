@@ -1616,6 +1616,8 @@ void KeepOnTop( void )
 	XRaiseWindow( dpy, Scr.MenuBar );
 	XRaiseWindow( dpy, Scr.lbCorner );
 	XRaiseWindow( dpy, Scr.rbCorner );
+	if( Scr.DockWin != None && Scr.DockVisible )
+		XRaiseWindow( dpy, Scr.DockWin );
 }
 
 void CreateSimpleMenu( void )

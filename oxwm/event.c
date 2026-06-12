@@ -50,6 +50,7 @@
 #include "misc.h"
 #include "desktop.h"
 #include "balloon.h"
+#include "dock.h"
 
 #include <X11/extensions/shape.h>
 
@@ -1923,6 +1924,10 @@ void HandleEvents( XEvent ev )
 	strcpy( Scr.ErrorFunc, "HandleEvents" );
 	if( Scr.Desktop != None && IsDesktopWindow( ev.xany.window ) ){
 		HandleDesktopEvent( &ev );
+		return;
+	}
+	if( Scr.DockWin != None && IsDockWindow( ev.xany.window ) ){
+		HandleDockEvent( &ev );
 		return;
 	}
 	switch( ev.type ){

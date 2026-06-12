@@ -77,6 +77,13 @@ typedef struct ScreenInfo
 	Window Desktop;
 	Window lbCorner;
 	Window rbCorner;
+	Window DockWin;
+	struct DockItem *DockItemRoot;
+	int DockNItems;
+	int DockVisible;
+	int DockHeight;
+	int DockItemSize;
+	int DockPadding;
 	OxwmWindow *ActiveWin;
 	OxwmWindow **LastActive;
 	OxwmWindow *PreviousActive;

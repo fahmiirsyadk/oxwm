@@ -15,6 +15,7 @@
 #include "menus.h"
 #include "config.h"
 #include "misc.h"
+#include "dock.h"
 
 struct configure key_modifiers[]=
 {
@@ -393,6 +394,59 @@ void SetShortCut( char *line, FILE *fp )
 		}
 		new->keycode = keycode;
 		new->action = strdup( action );
+	}
+}
+
+void SetDock( char *line, FILE *fp )
+{
+	char str[1024], *top, *end;
+	char icon[256], label[256], cmd[768];
+
+	if (Scr.DockHeight == 0) Scr.DockHeight = 72;
+	if (Scr.DockItemSize == 0) Scr.DockItemSize = 48;
+	if (Scr.DockPadding == 0) Scr.DockPadding = 8;
+
+	while( fgetline( str, sizeof(str), fp )!=NULL &&
+	       strncmp( str, "END", 3) ){
+		if( str[0]=='#' ) continue;
+
+		top = SkipSpace( str );
+		if( *top=='\0' || *top=='\n' ) continue;
+
+		if( !strncasecmp( top, "Size", 4 ) ){
+			int sz = 0, pad = 0, h = 0;
+			if( sscanf( top, "Size %d %d %d", &sz, &pad, &h )>=1 && sz>0 ){
+				Scr.DockItemSize = sz;
+				if( pad > 0 ) Scr.DockPadding = pad;
+				if( h > 0 )   Scr.DockHeight = h;
+			}
+			continue;
+		}
+
+		memset(icon, 0, sizeof(icon));
+		memset(label, 0, sizeof(label));
+		memset(cmd, 0, sizeof(cmd));
+
+		end = strchr( top, ',' );
+		if( !end ) continue;
+		strncpy( icon, top, end-top < (int)sizeof(icon) ? end-top : (int)sizeof(icon)-1 );
+		top = SkipSpace( end+1 );
+
+		end = strchr( top, ',' );
+		if( !end ) continue;
+		strncpy( label, top, end-top < (int)sizeof(label) ? end-top : (int)sizeof(label)-1 );
+		top = SkipSpace( end+1 );
+
+		strncpy( cmd, top, sizeof(cmd)-1 );
+		int len = strlen( cmd );
+		if( len>0 && cmd[len-1]=='\n' ) cmd[--len] = '\0';
+		if( len>0 && cmd[len-1]=='\r' ) cmd[--len] = '\0';
+
+		if( icon[0]=='\0' || cmd[0]=='\0' ) continue;
+
+		if( AddDockItem( icon, label[0] ? label : icon, cmd )!=0 ){
+			fprintf( stderr, "oxwm: dock item '%s' not added\n", label );
+		}
 	}
 }
 
@@ -783,6 +837,7 @@ config_func main_config[]={
 	{ "FlushMenu", SetMenuFlush },
 	{ "FollowToMouse", SetFollowToMouse },
 	{ "Compatible", SetCompatible },
+	{ "Dock", SetDock },
 	{ "IconMenuIcon", SetIconMenuIcon },
 	{ "IconPath", SetIconPath },
 	{ "IconifyHide", SetIconifyHide },

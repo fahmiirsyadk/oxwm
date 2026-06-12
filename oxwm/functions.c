@@ -18,6 +18,7 @@
 #include "event.h"
 #include "misc.h"
 #include "balloon.h"
+#include "dock.h"
 
 extern char NoName[];
 
@@ -714,6 +715,11 @@ void ExitSystem( char *action )
 	Done( 0, NULL );
 }
 
+void ToggleDock( char *action )
+{
+	DockToggleVisible();
+}
+
 extern struct configure key_modifiers[];
 
 void SendMessage( char *action )
@@ -943,6 +949,7 @@ builtin_func funcs[] = {
 	{ "ToggleScroll", ToggleScrollFunction },
 	{ "ToggleBalloon", ToggleBalloon },
 	{ "ToggleFullScreen", ToggleFullScreen },
+	{ "ToggleDock", ToggleDock },
 	{ "Wait", WaitMap },
 	{ NULL, 0 }
 };

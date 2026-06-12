@@ -183,6 +183,20 @@ def-Special
 def-Window
 END
 
+# Optional: bottom dock (Mac OS 9 style). Items are loaded from
+# the theme's icon directory (XDG_DATA_HOME/icons/, ~/.icons/, or
+# explicit paths). Right-click an item for Launch/Edit/Remove.
+# Toggle visibility from any menu with: Action ToggleDock
+#
+# Dock
+# Size 48 8 72            # icon_size padding dock_height
+# firefox, Firefox, firefox
+# chromium, Chromium, chromium
+# emacs, Emacs, emacs
+# gimp, Gimp, gimp
+# xterm, Terminal, xterm
+# END
+
 # Define the initial function
 InitFunction
 Desk 1

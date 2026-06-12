@@ -27,4 +27,5 @@ extern void RestartSystem( char * );
 extern void ExitSystem( char * );
 extern void ExecuteFunction( char * );
 extern void ToggleFullScreen( char * );
+extern void ToggleDock( char * );
 #endif

@@ -118,6 +118,26 @@ to `~/.mlvwm/MenuExtras/` by `make install`):
     Read .mlvwm/MenuExtras/oxwm-battery
     Read .mlvwm/MenuExtras/oxwm-clock
 
+### Bottom dock (Mac OS 9 style)
+
+A small floating dock can be pinned to the bottom-center of the screen.
+Items come from a `Dock` config block in your `~/.mlvwmrc`:
+
+    Dock
+    Size 48 8 72            # icon_size, padding, dock_height
+    firefox, Firefox, firefox
+    chromium, Chromium, chromium
+    emacs, Emacs, emacs
+    xterm, Terminal, xterm
+    END
+
+* Icon can be a freedesktop icon theme name (`firefox`) or an absolute
+  path (`/path/to/icon.png`).
+* Click an item to launch. Right-click for a context menu
+  (Launch / Edit / Remove).
+* Add `Action ToggleDock` to any menu to show/hide the dock.
+* The dock always floats above other windows.
+
 ### Compositor (picom)
 
 OXWM does not bundle a compositor. For window transparency, rounded

@@ -134,7 +134,7 @@ static int wrap_text(const char *text, char out[MAX_LINES][64], int maxw) {
 	return n + (i > 0 ? 1 : 0);
 }
 
-static const char *home_dir(void) {
+const char *home_dir(void) {
 	const char *home = getenv("HOME");
 	return (home && home[0]) ? home : NULL;
 }
@@ -154,12 +154,12 @@ static char *xdg_config_home(void) {
 	return p;
 }
 
-static char *xdg_data_home(void) {
+char *xdg_data_home(void) {
 	char *p = xdg_path("XDG_DATA_HOME", ".local/share");
 	return p;
 }
 
-static char *expand_path(const char *path) {
+char *expand_path(const char *path) {
 	if (!path) return NULL;
 	if (path[0] != '~') return strdup(path);
 	const char *home = home_dir();
@@ -216,7 +216,7 @@ static char *find_default_wallpaper(void) {
 	return NULL;
 }
 
-static char *find_icon_in_theme(const char *name) {
+char *find_icon_in_theme(const char *name) {
 	static const char *subdirs[] = {
 		"apps/48", "apps/32", "apps/16",
 		"mimes/48", "mimes/32", "mimes/16",
