@@ -23,7 +23,7 @@
 #define DOCK_PAD           4
 #define DOCK_BORDER        1
 #define DOCK_HANDLE_W      12
-#define DOCK_HANDLE_EXTEND 30
+#define DOCK_HANDLE_EXTEND 15
 #define DOCK_ARROW_W       6
 #define DOCK_LEFT_BTN      16
 #define DOCK_MAX_ITEMS     64
@@ -358,7 +358,7 @@ static void dock_create_or_resize(int n) {
 	}
 
 	int x = 0;
-	int y = Scr.MyDisplayHeight - DOCK_BAR_H;
+	int y = Scr.MyDisplayHeight - h;
 	if (x < 0) x = 0;
 	if (y < 0) y = 0;
 
