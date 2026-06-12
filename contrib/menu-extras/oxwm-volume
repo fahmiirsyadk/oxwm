@@ -1,0 +1,6 @@
+################################################################################
+# oxwm-volume Menu Extra
+################################################################################
+# PulseAudio volume bar (100x18, 200ms poll). Click to set, right-click to
+# mute, scroll to nudge volume.
+Swallow "oxwm-volume" Action Exec "oxwm-volume" exec oxwm-volume -W 100 -H 18 -i 200

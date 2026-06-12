@@ -728,6 +728,16 @@ int main( int argc, char *argv[] )
 	XUngrabServer( dpy );
 	if( !Scr.MenuLabelRoot )	CreateSimpleMenu();
 	CreateMenuItems();
+	/* Do the initial menubar layout now so swallowed widgets get
+	 * positioned correctly (on the right) instead of staying at
+	 * (0,0) until the first focus change. MapMenuBar is a no-op
+	 * while STARTING is set, so clear it temporarily. */
+	{
+		Bool was_starting = Scr.flags & STARTING;
+		Scr.flags &= ~STARTING;
+		MapMenuBar( Scr.ActiveWin );
+		if( was_starting ) Scr.flags |= STARTING;
+	}
 	for( Scr.iconAnchor = Scr.IconMenu.m_item;
 		Scr.iconAnchor->next->next != NULL;
 		Scr.iconAnchor = Scr.iconAnchor->next );

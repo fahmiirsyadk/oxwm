@@ -16,7 +16,17 @@ WM_SRCS   = $(wildcard oxwm/*.c)
 WM_OBJS   = $(WM_SRCS:.c=.o)
 WM_BIN    = oxwm/oxwm
 
-BINS = $(WM_BIN)
+# Menu-bar widgets (small standalone X11 programs that get Swallowed
+# into the menubar). Each is built separately; they don't need
+# imlib2/xft, just x11.
+PKGS_WIDGET = x11
+CFLAGS_WIDGET = $(CFLAGS) $(shell pkg-config --cflags $(PKGS_WIDGET))
+LIBS_WIDGET   = $(shell pkg-config --libs   $(PKGS_WIDGET))
+
+WIDGET_SRCS = $(wildcard oxwm/widgets/*.c)
+WIDGET_BINS = $(patsubst oxwm/widgets/%.c,oxwm/widgets/%,$(WIDGET_SRCS))
+
+BINS = $(WM_BIN) $(WIDGET_BINS)
 
 .PHONY: all clean install
 
@@ -28,11 +38,17 @@ $(WM_BIN): $(WM_OBJS)
 oxwm/%.o: oxwm/%.c
 	$(CC) $(CFLAGS_WM) -c $< -o $@
 
+oxwm/widgets/%: oxwm/widgets/%.c
+	$(CC) $(CFLAGS_WIDGET) -o $@ $< $(LIBS_WIDGET) $(LDFLAGS)
+
 clean:
-	rm -f $(WM_OBJS) $(WM_BIN)
+	rm -f $(WM_OBJS) $(WM_BIN) $(WIDGET_BINS)
 
 install: all
 	install -d $(DESTDIR)$(HOME)/.local/bin
 	install -m 0755 $(WM_BIN) $(DESTDIR)$(HOME)/.local/bin/oxwm
+	install -m 0755 $(WIDGET_BINS) $(DESTDIR)$(HOME)/.local/bin/
 	install -d $(DESTDIR)$(HOME)/.config/picom
 	install -m 0644 contrib/picom/picom.conf $(DESTDIR)$(HOME)/.config/picom/picom.conf
+	install -d $(DESTDIR)$(HOME)/.mlvwm/MenuExtras
+	install -m 0644 contrib/menu-extras/* $(DESTDIR)$(HOME)/.mlvwm/MenuExtras/

@@ -99,6 +99,25 @@ Install icon theme for desktop icons:
     mkdir -p ~/.icons
     tar xzf customize/NineIcons48x.tar.gz -C ~/.icons/
 
+### Menubar widgets
+
+Three small X11 widgets ship with oxwm and get Swallowed into the
+menubar (add to your `~/.mlvwmrc` or include from `~/.mlvwm/MenuBar`):
+
+* `oxwm-volume` — PulseAudio volume bar. Click to set, drag to scrub,
+  scroll wheel to nudge, right-click to mute. Requires `pactl`.
+* `oxwm-battery` — reads `/sys/class/power_supply/BAT0/`, shows
+  percentage + charge state. Red below 15%, yellow below 30%.
+* `oxwm-clock` — `strftime`-style clock. Use `-f` for time format,
+  `-F` for an optional second line (e.g. date).
+
+Example entries (these are in `contrib/menu-extras/` and auto-installed
+to `~/.mlvwm/MenuExtras/` by `make install`):
+
+    Read .mlvwm/MenuExtras/oxwm-volume
+    Read .mlvwm/MenuExtras/oxwm-battery
+    Read .mlvwm/MenuExtras/oxwm-clock
+
 ### Compositor (picom)
 
 OXWM does not bundle a compositor. For window transparency, rounded

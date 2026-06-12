@@ -135,11 +135,6 @@ Menu def-Label, Label "Label"
 "Project 2" NonSelect, Gray
 END
 
-Menu restart-sub
-"Start twm"  Action Restart twm
-"Start fvwm" Action Restart fvwm
-END
-
 Menu def-Special, Label "Special"
 "Clean Up Desktop" Action Refresh
 "Empty Trash" NonSelect, Gray
@@ -147,10 +142,24 @@ Menu def-Special, Label "Special"
 "Eject Disk" NonSelect, Gray
 "Erase Disk..." NonSelect, Gray
 "" NonSelect
-"Start" SubMenu restart-sub
-"Restart" Action Restart oxwm
+"Restart oxwm" Action Restart oxwm
 "Shut down" Action Exit
 END
+
+# Optional: define a submenu to switch to other installed WMs.
+# Uncomment the entries for WMs you actually have installed;
+# oxwm validates the binary exists before execvp.
+#Menu switch-wm-sub
+#"Start i3"        Action Restart i3
+#"Start bspwm"     Action Restart bspwm
+#"Start openbox"   Action Restart openbox
+#"Start sway"      Action Restart sway
+#END
+#
+#Menu def-Special, Label "Special"
+#...
+#"Switch WM"       SubMenu switch-wm-sub
+#...
 
 Menu def-Window
 "Move" Action MoveWindow

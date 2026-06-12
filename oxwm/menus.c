@@ -749,10 +749,12 @@ Bool SwallowMenu( MenuLabel *ml )
 			else
 				name = NoName;
 
-			XGetClassHint(dpy, ev.xmaprequest.window, &class);
+			if( XGetClassHint(dpy, ev.xmaprequest.window, &class) == 0 ){
+				class.res_name = class.res_class = NULL;
+			}
 			if( !strcmp( name, ml->name ) ||
-			   !strcmp( class.res_name, ml->name ) ||
-			   !strcmp( class.res_class, ml->name ) ){
+			   (class.res_name && !strcmp( class.res_name, ml->name )) ||
+			   (class.res_class && !strcmp( class.res_class, ml->name )) ){
 				done = False;
 				XGetWindowAttributes( dpy, ev.xmaprequest.window, &attr );
 
@@ -782,6 +784,7 @@ Bool SwallowMenu( MenuLabel *ml )
 			if( class.res_class ) XFree( (char *)class.res_class );
 #ifdef USE_LOCALE
 			if( list ) XFreeStringList( list );
+			if( text_prop.value ) XFree( (char *)text_prop.value );
 #else
 			if( name!=NoName ) XFree( name );
 #endif
@@ -808,6 +811,13 @@ void CreateMenuLabel( MenuLabel *ml )
 			XSetWindowBorderWidth( dpy, ml->LabelWin, 0 );
 //			XResizeWindow( dpy, ml->LabelWin, ml->LabelWidth, MENUB_H-2 );
 			XReparentWindow( dpy, ml->LabelWin, Scr.MenuBar, 0, 0 );
+			/* Make sure the reparented widget is mapped. The widget
+			 * itself called XMapWindow before being reparented, but
+			 * XReparentWindow with no explicit change might leave it
+			 * unmapped. XMapSubwindows is called on the menubar on
+			 * focus changes, but until then the widget would be
+			 * invisible. */
+			XMapWindow( dpy, ml->LabelWin );
 			ml->LabelWidth += 6;
 		}
 	}
@@ -1335,12 +1345,15 @@ void CreateMenuBar( void )
 	unsigned long valuemask;
 	XSetWindowAttributes attributes;
 
-	valuemask = CWCursor | CWBackPixel | CWEventMask;
+	valuemask = CWCursor | CWBackPixel | CWEventMask | CWBackingStore;
 	attributes.cursor = Scr.OxwmCursors[DEFAULT];
 	attributes.background_pixel = WhitePixel( dpy, Scr.screen );
 	attributes.event_mask = (SubstructureRedirectMask | ButtonPressMask |
 							 EnterWindowMask | ExposureMask |
 							 OwnerGrabButtonMask | ButtonReleaseMask );
+	/* WhenMapped so swallowed widget sub-windows are preserved when
+	 * the menubar is redrawn (e.g. on focus change, menu draw). */
+	attributes.backing_store = WhenMapped;
 	Scr.MenuBar = XCreateWindow( dpy, Scr.Root, 0, 0,
 								Scr.MyDisplayWidth, MENUB_H ,0,
 								CopyFromParent, InputOutput, CopyFromParent,
@@ -1423,7 +1436,10 @@ void MapMenuBar( OxwmWindow *win )
 	XMapWindow( dpy, Scr.IconMenu.LabelWin );
 	for( mlink=style->menubar->link; mlink; mlink=mlink->next ){
 		XMapWindow( dpy, mlink->link->LabelWin );
-		RedrawMenu( mlink->link, False );
+		/* Swallowed widgets draw themselves; RedrawMenu would
+		 * XClearWindow their LabelWin and erase their content. */
+		if( !(mlink->link->flags&SWALLOW) )
+			RedrawMenu( mlink->link, False );
 	}
 	Scr.ActiveMenu = style->menubar;
 	XSync( dpy, 0 );

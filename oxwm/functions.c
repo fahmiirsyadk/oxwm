@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "oxwm.h"
 #include "screen.h"
@@ -661,8 +662,18 @@ void ExecSystems( char *action )
 {
 	char *comm;
 
-	if( strchr( action, '"' ) )
-		comm = strrchr( action, '"' )+1;
+	/* Action syntax: Exec "label" command args...
+	 * The first quote opens the label, the matching quote (next quote)
+	 * closes it. Everything after the closing quote is the command.
+	 * Use strchr (first quote) and the next quote after it, NOT
+	 * strrchr — args like -f "%H:%M" also contain quotes which would
+	 * confuse the last-quote search. */
+	if( strchr( action, '"' ) ){
+		char *q1 = strchr( action, '"' );
+		char *q2 = strchr( q1+1, '"' );
+		if( q2 ) comm = q2+1;
+		else     comm = action+4;
+	}
 	else
 		comm = action+4;
 	while( *comm == ' ' || *comm == '\t' ) comm++;
@@ -685,8 +696,15 @@ void RestartSystem( char *action )
 	char *top;
 
 	top = SkipSpace( SkipNonSpace( action+6 ));
-	if( strncmp( top, "oxwm", 4 ) && strncmp( top, "mlvwm", 5 ) )
+	if( strncmp( top, "oxwm", 4 ) && strncmp( top, "mlvwm", 5 ) ){
+		if( access( top, X_OK ) != 0 ){
+			fprintf( stderr, "oxwm: cannot restart '%s': %s\n",
+			         top, strerror( errno ) );
+			DrawErrMsgOnMenu( "Cannot find executable: ", top );
+			return;
+		}
 		Done( 1, strdup(top) );
+	}
 	else
 		Done( 1, NULL );
 }

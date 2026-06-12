@@ -1,0 +1,6 @@
+################################################################################
+# oxwm-battery Menu Extra
+################################################################################
+# Battery percentage and charge state (50x18, 5s poll). Reads
+# /sys/class/power_supply/BAT0. Color: red <15%, yellow <30%, gray otherwise.
+Swallow "oxwm-battery" Action Exec "oxwm-battery" exec oxwm-battery -W 50 -H 18 -i 5000
