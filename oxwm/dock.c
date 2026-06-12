@@ -17,28 +17,30 @@
 #include "desktop.h"
 #include "dock.h"
 
-#define DOCK_DEFAULT_H     36
-#define DOCK_DEFAULT_ITEM  32
-#define DOCK_DEFAULT_PAD   2
+/* Mac OS 9 Control Strip / Applications Drawer dimensions */
+#define DOCK_BAR_H         32
+#define DOCK_ITEM_SIZE     32
+#define DOCK_PAD           4
 #define DOCK_BORDER        1
-#define DOCK_LABEL_H       0
-#define DOCK_LABEL_PAD     0
+#define DOCK_HANDLE_W      12
+#define DOCK_HANDLE_EXTEND 30
+#define DOCK_ARROW_W       6
+#define DOCK_LEFT_BTN      16
 #define DOCK_MAX_ITEMS     64
 #define DOCK_MENU_ITEM_H   22
 #define DOCK_MENU_W        140
-#define DOCK_HANDLE_W      12
-#define DOCK_HANDLE_EXTEND 30
-#define DOCK_ARROW_W       10
-#define DOCK_LEFT_BTN_W    16
-#define DOCK_PLATINUM      0xC0C0C0
-#define DOCK_SHADOW        0x808080
-#define DOCK_BLACK         0x000000
+
+/* Mac OS 9 Platinum colors */
+#define PLATINUM   0xC0C0C0
+#define WHITE      0xFFFFFF
+#define SHADOW     0x808080
+#define BLACK      0x000000
 
 static DockItem *dock_root = NULL;
 static int       dock_nitems = 0;
 static XftFont  *dock_xft_font = NULL;
 static XftColor  dock_xft_black, dock_xft_white, dock_xft_gray;
-static GC        dock_text_gc = NULL;
+static GC        dock_gc = NULL;
 static Pixmap    dock_backing = None;
 static int       dock_backing_w = 0, dock_backing_h = 0;
 static int       dock_drag_idx = -1;
@@ -81,8 +83,8 @@ static int dock_xft_init(void) {
 		DefaultColormap(dpy, Scr.screen), "#888888", &dock_xft_gray);
 	(void)rblack; (void)rwhite; (void)rgray;
 
-	dock_text_gc = XCreateGC(dpy, Scr.Root, 0, NULL);
-	XSetForeground(dpy, dock_text_gc, BlackPixel(dpy, Scr.screen));
+	dock_gc = XCreateGC(dpy, Scr.Root, 0, NULL);
+	XSetForeground(dpy, dock_gc, BlackPixel(dpy, Scr.screen));
 	return 1;
 }
 
@@ -134,8 +136,8 @@ static int dock_load_icon(DockItem *it, const char *icon_raw) {
 
 static void dock_item_to_pixmap(DockItem *it) {
 	if (!it->icon) return;
-	int w = Scr.DockItemSize + DOCK_LABEL_PAD * 2;
-	int h = Scr.DockItemSize + DOCK_LABEL_PAD * 2 + DOCK_LABEL_H;
+	int w = Scr.DockItemSize;
+	int h = Scr.DockItemSize;
 
 	if (it->pix) XFreePixmap(dpy, it->pix);
 	it->pix = XCreatePixmap(dpy, Scr.Root, w, h,
@@ -143,49 +145,24 @@ static void dock_item_to_pixmap(DockItem *it) {
 	it->pw = w; it->ph = h;
 
 	int ix = (w - it->iw) / 2;
-	int iy = DOCK_LABEL_PAD + (Scr.DockItemSize - it->ih) / 2;
+	int iy = (h - it->ih) / 2;
 	imlib_context_set_image(it->icon);
 	imlib_context_set_drawable(it->pix);
 	imlib_render_image_on_drawable(ix, iy);
-
-	if (DOCK_LABEL_H > 0) {
-		XftDraw *xftd = XftDrawCreate(dpy, it->pix,
-			DefaultVisual(dpy, Scr.screen),
-			DefaultColormap(dpy, Scr.screen));
-		if (xftd) {
-			XGlyphInfo ext;
-			XftTextExtents8(dpy, dock_xft_font,
-				(unsigned char *)it->label, strlen(it->label), &ext);
-			int tx = (w - ext.width) / 2;
-			if (tx < 0) tx = 0;
-			int ty = Scr.DockItemSize + DOCK_LABEL_PAD * 2 +
-				dock_xft_font->ascent;
-			XftDrawString8(xftd, &dock_xft_black, dock_xft_font,
-				tx + 1, ty + 1,
-				(unsigned char *)it->label, strlen(it->label));
-			XftDrawString8(xftd, &dock_xft_white, dock_xft_font,
-				tx, ty,
-				(unsigned char *)it->label, strlen(it->label));
-			XftDrawDestroy(xftd);
-		}
-	}
 }
 
 static int dock_total_width(void) {
 	int items_w = dock_nitems * Scr.DockItemSize;
-	int arrows_w = (dock_nitems - 1) * (Scr.DockPadding + DOCK_ARROW_W);
+	int arrows_w = (dock_nitems - 1) * DOCK_ARROW_W;
 	if (dock_nitems <= 1) arrows_w = 0;
-	return DOCK_LEFT_BTN_W + Scr.DockPadding +
-		items_w + arrows_w + Scr.DockPadding +
-		DOCK_HANDLE_W + DOCK_BORDER * 3;
+	return DOCK_LEFT_BTN + DOCK_PAD +
+		items_w + arrows_w + (dock_nitems * DOCK_PAD) +
+		DOCK_PAD + DOCK_HANDLE_W + DOCK_BORDER * 4;
 }
 
 static void dock_layout(int *out_w, int *out_h) {
-	int content_w = dock_nitems > 0
-		? dock_total_width() - DOCK_BORDER * 2
-		: DOCK_LEFT_BTN_W + DOCK_HANDLE_W + DOCK_BORDER * 4;
-	int w = content_w + DOCK_BORDER * 2;
-	int h = Scr.DockHeight + DOCK_HANDLE_EXTEND;
+	int w = dock_nitems > 0 ? dock_total_width() : DOCK_LEFT_BTN + DOCK_HANDLE_W + DOCK_BORDER * 6;
+	int h = DOCK_BAR_H + DOCK_HANDLE_EXTEND;
 	if (w < 4) w = 4;
 	*out_w = w;
 	*out_h = h;
@@ -193,7 +170,7 @@ static void dock_layout(int *out_w, int *out_h) {
 
 static void dock_paint_item(DockItem *it, int dst_x, int dst_y) {
 	if (!it || !it->pix) return;
-	XCopyArea(dpy, it->pix, dock_backing, dock_text_gc,
+	XCopyArea(dpy, it->pix, dock_backing, dock_gc,
 		0, 0, it->pw, it->ph, dst_x, dst_y);
 }
 
@@ -201,41 +178,13 @@ static void dock_paint_selection(int x, int y, int w, int h) {
 	if (x < 0) return;
 	XGCValues gcv;
 	unsigned long gcm = GCForeground;
-	gcv.foreground = DOCK_BLACK;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
+	gcv.foreground = BLACK;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
 	gcv.line_style = LineDoubleDash;
-	XChangeGC(dpy, dock_text_gc, GCLineStyle, &gcv);
-	XDrawRectangle(dpy, dock_backing, dock_text_gc, x - 1, y - 1, w + 1, h + 1);
+	XChangeGC(dpy, dock_gc, GCLineStyle, &gcv);
+	XDrawRectangle(dpy, dock_backing, dock_gc, x - 1, y - 1, w + 1, h + 1);
 	gcv.line_style = LineSolid;
-	XChangeGC(dpy, dock_text_gc, GCLineStyle, &gcv);
-}
-
-static void dock_DrawFrame(Drawable w, int fw, int fh) {
-	XGCValues gcv;
-	unsigned long gcm = GCForeground;
-
-	/* Fill with Mac OS 9 platinum gray (#C0C0C0) */
-	gcv.foreground = DOCK_PLATINUM;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XFillRectangle(dpy, w, dock_text_gc, 0, 0, fw, fh);
-
-	/* 1px white highlight on top and left */
-	gcv.foreground = WhitePixel(dpy, Scr.screen);
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, w, dock_text_gc, 0, 0, fw - 1, 0);
-	XDrawLine(dpy, w, dock_text_gc, 0, 0, 0, fh - 1);
-
-	/* 1px dark gray shadow on bottom and right */
-	gcv.foreground = DOCK_SHADOW;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, w, dock_text_gc, 0, fh - 1, fw - 1, fh - 1);
-	XDrawLine(dpy, w, dock_text_gc, fw - 1, 0, fw - 1, fh - 1);
-
-	/* 1px black line just inside the shadow */
-	gcv.foreground = DOCK_BLACK;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, w, dock_text_gc, 0, fh - 2, fw - 1, fh - 2);
-	XDrawLine(dpy, w, dock_text_gc, fw - 2, 0, fw - 2, fh - 1);
+	XChangeGC(dpy, dock_gc, GCLineStyle, &gcv);
 }
 
 static void dock_rebuild_backing(int w, int h) {
@@ -251,100 +200,100 @@ static void dock_rebuild_backing(int w, int h) {
 	unsigned long gcm = GCForeground;
 
 	/* Fill entire window with platinum gray */
-	gcv.foreground = DOCK_PLATINUM;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XFillRectangle(dpy, dock_backing, dock_text_gc, 0, 0, w, h);
+	gcv.foreground = PLATINUM;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XFillRectangle(dpy, dock_backing, dock_gc, 0, 0, w, h);
 
-	/* Main bar starts at y = DOCK_HANDLE_EXTEND */
+	/* Main bar area: from y = DOCK_HANDLE_EXTEND to bottom */
 	int bar_y = DOCK_HANDLE_EXTEND;
 	int bar_h = h - DOCK_HANDLE_EXTEND;
 
-	/* Main bar bevel: white top/left, dark bottom/right, black line */
-	gcv.foreground = WhitePixel(dpy, Scr.screen);
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, 0, bar_y, w - 1, bar_y);
-	XDrawLine(dpy, dock_backing, dock_text_gc, 0, bar_y, 0, h - 1);
+	/* Main bar bevel: 1px white top, 1px dark gray bottom, 1px black line */
+	gcv.foreground = WHITE;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XDrawLine(dpy, dock_backing, dock_gc, 0, bar_y, w - 1, bar_y);
+	XDrawLine(dpy, dock_backing, dock_gc, 0, bar_y, 0, h - 1);
 
-	gcv.foreground = DOCK_SHADOW;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, 0, h - 1, w - 1, h - 1);
-	XDrawLine(dpy, dock_backing, dock_text_gc, w - 1, bar_y, w - 1, h - 1);
+	gcv.foreground = SHADOW;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XDrawLine(dpy, dock_backing, dock_gc, 0, h - 1, w - 1, h - 1);
+	XDrawLine(dpy, dock_backing, dock_gc, w - 1, bar_y, w - 1, h - 1);
 
-	gcv.foreground = DOCK_BLACK;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, 0, h - 2, w - 1, h - 2);
-	XDrawLine(dpy, dock_backing, dock_text_gc, w - 2, bar_y, w - 2, h - 1);
+	gcv.foreground = BLACK;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XDrawLine(dpy, dock_backing, dock_gc, 0, h - 2, w - 1, h - 2);
+	XDrawLine(dpy, dock_backing, dock_gc, w - 2, bar_y, w - 2, h - 1);
 
-	/* Left button (small square on far left) */
-	int lbx = DOCK_BORDER + Scr.DockPadding;
-	int lby = bar_y + (bar_h - DOCK_LEFT_BTN_W) / 2;
-	int lbw = DOCK_LEFT_BTN_W;
-	int lbh = DOCK_LEFT_BTN_W;
+	/* Left button (small square on far left of bar) */
+	int lbx = DOCK_BORDER + DOCK_PAD;
+	int lby = bar_y + (bar_h - DOCK_LEFT_BTN) / 2;
+	int lbw = DOCK_LEFT_BTN;
+	int lbh = DOCK_LEFT_BTN;
 
-	gcv.foreground = DOCK_PLATINUM;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XFillRectangle(dpy, dock_backing, dock_text_gc, lbx, lby, lbw, lbh);
+	gcv.foreground = PLATINUM;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XFillRectangle(dpy, dock_backing, dock_gc, lbx, lby, lbw, lbh);
 
-	gcv.foreground = WhitePixel(dpy, Scr.screen);
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, lbx, lby, lbx + lbw - 1, lby);
-	XDrawLine(dpy, dock_backing, dock_text_gc, lbx, lby, lbx, lby + lbh - 1);
+	gcv.foreground = WHITE;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XDrawLine(dpy, dock_backing, dock_gc, lbx, lby, lbx + lbw - 1, lby);
+	XDrawLine(dpy, dock_backing, dock_gc, lbx, lby, lbx, lby + lbh - 1);
 
-	gcv.foreground = DOCK_SHADOW;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, lbx, lby + lbh - 1, lbx + lbw - 1, lby + lbh - 1);
-	XDrawLine(dpy, dock_backing, dock_text_gc, lbx + lbw - 1, lby, lbx + lbw - 1, lby + lbh - 1);
+	gcv.foreground = SHADOW;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XDrawLine(dpy, dock_backing, dock_gc, lbx, lby + lbh - 1, lbx + lbw - 1, lby + lbh - 1);
+	XDrawLine(dpy, dock_backing, dock_gc, lbx + lbw - 1, lby, lbx + lbw - 1, lby + lbh - 1);
 
-	gcv.foreground = DOCK_BLACK;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, lbx, lby + lbh - 2, lbx + lbw - 1, lby + lbh - 2);
-	XDrawLine(dpy, dock_backing, dock_text_gc, lbx + lbw - 2, lby, lbx + lbw - 2, lby + lbh - 1);
+	gcv.foreground = BLACK;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XDrawLine(dpy, dock_backing, dock_gc, lbx, lby + lbh - 2, lbx + lbw - 1, lby + lbh - 2);
+	XDrawLine(dpy, dock_backing, dock_gc, lbx + lbw - 2, lby, lbx + lbw - 2, lby + lbh - 1);
 
-	/* Vertical handle on right side, extending UPWARD above the bar */
+	/* Vertical handle tab on right side, extending UPWARD from bar */
 	int hx = w - DOCK_BORDER * 2 - DOCK_HANDLE_W;
 	int hw = DOCK_HANDLE_W;
 	int handle_top = 0;
-	int handle_bottom = bar_y + Scr.DockHeight / 2;
+	int handle_bottom = bar_y + DOCK_BAR_H / 2;
 	int hh = handle_bottom - handle_top;
 
 	/* Handle background */
-	gcv.foreground = DOCK_PLATINUM;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XFillRectangle(dpy, dock_backing, dock_text_gc, hx, handle_top, hw, hh);
+	gcv.foreground = PLATINUM;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XFillRectangle(dpy, dock_backing, dock_gc, hx, handle_top, hw, hh);
 
-	/* Handle bevel - white highlight on top and left */
-	gcv.foreground = WhitePixel(dpy, Scr.screen);
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, hx, handle_top, hx + hw - 1, handle_top);
-	XDrawLine(dpy, dock_backing, dock_text_gc, hx, handle_top, hx, handle_bottom - 1);
+	/* Handle bevel - white highlight on left */
+	gcv.foreground = WHITE;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XDrawLine(dpy, dock_backing, dock_gc, hx, handle_top, hx, handle_bottom - 1);
+	XDrawLine(dpy, dock_backing, dock_gc, hx, handle_top, hx + hw - 1, handle_top);
 
-	/* Handle bevel - dark shadow on bottom and right */
-	gcv.foreground = DOCK_SHADOW;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, hx, handle_bottom - 1, hx + hw - 1, handle_bottom - 1);
-	XDrawLine(dpy, dock_backing, dock_text_gc, hx + hw - 1, handle_top, hx + hw - 1, handle_bottom - 1);
+	/* Handle bevel - dark shadow on right */
+	gcv.foreground = SHADOW;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XDrawLine(dpy, dock_backing, dock_gc, hx + hw - 1, handle_top, hx + hw - 1, handle_bottom - 1);
+	XDrawLine(dpy, dock_backing, dock_gc, hx, handle_bottom - 1, hx + hw - 1, handle_bottom - 1);
 
 	/* Handle black line */
-	gcv.foreground = DOCK_BLACK;
-	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, hx, handle_bottom - 2, hx + hw - 1, handle_bottom - 2);
-	XDrawLine(dpy, dock_backing, dock_text_gc, hx + hw - 2, handle_top, hx + hw - 2, handle_bottom - 1);
+	gcv.foreground = BLACK;
+	XChangeGC(dpy, dock_gc, gcm, &gcv);
+	XDrawLine(dpy, dock_backing, dock_gc, hx + hw - 2, handle_top, hx + hw - 2, handle_bottom - 1);
+	XDrawLine(dpy, dock_backing, dock_gc, hx, handle_bottom - 2, hx + hw - 1, handle_bottom - 2);
 
 	/* Handle grip lines (3 horizontal lines centered) */
 	int grip_cy = handle_top + hh / 2;
 	int grip_x1 = hx + 2;
 	int grip_x2 = hx + hw - 3;
-	for (int i = -4; i <= 4; i += 4) {
-		gcv.foreground = DOCK_BLACK;
-		XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-		XDrawLine(dpy, dock_backing, dock_text_gc,
+	for (int i = -3; i <= 3; i += 3) {
+		gcv.foreground = BLACK;
+		XChangeGC(dpy, dock_gc, gcm, &gcv);
+		XDrawLine(dpy, dock_backing, dock_gc,
 			grip_x1, grip_cy + i, grip_x2, grip_cy + i);
 	}
 
 	/* Items: start after left button, end before handle */
-	int content_x = lbx + lbw + Scr.DockPadding;
+	int content_x = lbx + lbw + DOCK_PAD;
 	int content_y = bar_y + (bar_h - Scr.DockItemSize) / 2;
-	int content_right = hx - Scr.DockPadding;
+	int content_right = hx - DOCK_PAD;
 
 	int ix = content_x;
 	int iy = content_y;
@@ -355,21 +304,22 @@ static void dock_rebuild_backing(int w, int h) {
 		dock_paint_item(it, ix, iy);
 		it->px = ix;
 		it->py = iy;
-		ix += Scr.DockItemSize + Scr.DockPadding;
+		ix += Scr.DockItemSize + DOCK_PAD;
 
+		/* Draw arrow separator (▶) between items */
 		if (it->next && ix + Scr.DockItemSize <= content_right) {
-			gcv.foreground = DOCK_BLACK;
-			XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-			int ax = ix + Scr.DockPadding / 2;
+			gcv.foreground = BLACK;
+			XChangeGC(dpy, dock_gc, gcm, &gcv);
+			int ax = ix - DOCK_PAD / 2;
 			int ay = content_y + Scr.DockItemSize / 2;
 			XPoint arrow[3];
 			arrow[0].x = ax;
-			arrow[0].y = ay - 4;
+			arrow[0].y = ay - 3;
 			arrow[1].x = ax;
-			arrow[1].y = ay + 4;
-			arrow[2].x = ax + 5;
+			arrow[1].y = ay + 3;
+			arrow[2].x = ax + 4;
 			arrow[2].y = ay;
-			XFillPolygon(dpy, dock_backing, dock_text_gc,
+			XFillPolygon(dpy, dock_backing, dock_gc,
 				arrow, 3, Convex, CoordModeOrigin);
 			ix += DOCK_ARROW_W;
 		}
@@ -393,7 +343,7 @@ void RedrawDock(void) {
 	int w, h;
 	dock_layout(&w, &h);
 	dock_rebuild_backing(w, h);
-	XCopyArea(dpy, dock_backing, Scr.DockWin, dock_text_gc,
+	XCopyArea(dpy, dock_backing, Scr.DockWin, dock_gc,
 		0, 0, w, h, 0, 0);
 	XFlush(dpy);
 }
@@ -402,13 +352,13 @@ static void dock_create_or_resize(int n) {
 	int w, h;
 	if (n == 0) {
 		w = 4;
-		h = Scr.DockHeight;
+		h = DOCK_BAR_H;
 	} else {
 		dock_layout(&w, &h);
 	}
 
 	int x = 0;
-	int y = Scr.MyDisplayHeight - Scr.DockHeight;
+	int y = Scr.MyDisplayHeight - DOCK_BAR_H;
 	if (x < 0) x = 0;
 	if (y < 0) y = 0;
 
@@ -418,7 +368,7 @@ static void dock_create_or_resize(int n) {
 		wa.event_mask = ButtonPressMask | ButtonReleaseMask |
 			Button1MotionMask | ExposureMask | EnterWindowMask |
 			LeaveWindowMask | PointerMotionMask;
-		wa.background_pixel = DOCK_PLATINUM;
+		wa.background_pixel = PLATINUM;
 		wa.backing_store = WhenMapped;
 		wa.bit_gravity = NorthWestGravity;
 		unsigned long vm = CWOverrideRedirect | CWEventMask |
@@ -441,9 +391,9 @@ static void dock_create_or_resize(int n) {
 static int dock_hit(int x, int y) {
 	if (x < DOCK_BORDER || y < DOCK_BORDER) return -1;
 	int rx = x - DOCK_BORDER;
-	int stride = Scr.DockItemSize + Scr.DockPadding +
-		((dock_nitems > 1) ? (Scr.DockPadding + DOCK_ARROW_W) : 0);
-	if (rx >= dock_nitems * stride - Scr.DockPadding) return -1;
+	int stride = Scr.DockItemSize + DOCK_PAD +
+		((dock_nitems > 1) ? DOCK_ARROW_W : 0);
+	if (rx >= dock_nitems * stride - DOCK_PAD) return -1;
 	int idx = rx / stride;
 	if (idx < 0 || idx >= dock_nitems) return -1;
 	return idx;
@@ -652,7 +602,7 @@ void HandleDockEvent(XEvent *ev) {
 				int rx, ry;
 				Window child;
 				XTranslateCoordinates(dpy, Scr.DockWin, Scr.Root,
-					ev->xbutton.x, ev->xbutton.y, &rx, &ry, &child);
+                                        ev->xbutton.x, ev->xbutton.y, &rx, &ry, &child);
 				dock_menu_show(rx, ry, idx);
 				dock_menu_press();
 			} else if (ev->xbutton.button == 1 && idx >= 0) {
@@ -742,9 +692,9 @@ int AddDockItem(const char *icon, const char *label, const char *cmd) {
 }
 
 void InitDock(void) {
-	if (Scr.DockItemSize == 0) Scr.DockItemSize = DOCK_DEFAULT_ITEM;
-	if (Scr.DockHeight == 0) Scr.DockHeight = DOCK_DEFAULT_H;
-	if (Scr.DockPadding == 0) Scr.DockPadding = DOCK_DEFAULT_PAD;
+	if (Scr.DockItemSize == 0) Scr.DockItemSize = DOCK_ITEM_SIZE;
+	if (Scr.DockHeight == 0) Scr.DockHeight = DOCK_BAR_H;
+	if (Scr.DockPadding == 0) Scr.DockPadding = DOCK_PAD;
 	Scr.DockWin = None;
 	Scr.DockVisible = 0;
 
@@ -759,8 +709,7 @@ void InitDock(void) {
 	}
 
 	if (dock_nitems == 0) {
-		Scr.DockHeight = DOCK_BORDER * 2 +
-			Scr.DockItemSize + DOCK_LABEL_PAD * 2 + DOCK_LABEL_H;
+		Scr.DockHeight = DOCK_BAR_H;
 	} else {
 		dock_create_or_resize(dock_nitems);
 		RedrawDock();
@@ -773,7 +722,7 @@ void DestroyDock(void) {
 	if (dock_menu_gc) { XFreeGC(dpy, dock_menu_gc); dock_menu_gc = NULL; }
 	if (Scr.DockWin) { XDestroyWindow(dpy, Scr.DockWin); Scr.DockWin = None; }
 	if (dock_backing) { XFreePixmap(dpy, dock_backing); dock_backing = None; }
-	if (dock_text_gc) { XFreeGC(dpy, dock_text_gc); dock_text_gc = NULL; }
+	if (dock_gc) { XFreeGC(dpy, dock_gc); dock_gc = NULL; }
 	if (dock_xft_font) {
 		XftFontClose(dpy, dock_xft_font);
 		dock_xft_font = NULL;
