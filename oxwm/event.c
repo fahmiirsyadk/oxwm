@@ -1720,7 +1720,8 @@ void HandleMapNotify( XEvent *ev )
 		tmp_win = NULL;
 	if (!tmp_win){
 		if( (ev->xmap.override_redirect == True) &&
-		   (ev->xmap.window != Scr.NoFocusWin))
+		   (ev->xmap.window != Scr.NoFocusWin) &&
+		   !IsDockWindow( ev->xmap.window ))
           XSelectInput( dpy, ev->xmap.window,FocusChangeMask);
 		return;
     }

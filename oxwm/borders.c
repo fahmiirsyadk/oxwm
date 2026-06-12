@@ -1011,6 +1011,13 @@ void SetFocus( OxwmWindow *t )
 	mask = GCForeground;
 
 	if( Scr.ActiveWin==t )		return;
+	/* Guard: if Scr.ActiveWin was corrupted (e.g. set to a Window ID
+	 * instead of a pointer), don't dereference it. */
+	if( Scr.ActiveWin && Scr.DockWin != None &&
+	   (Window)Scr.ActiveWin == Scr.DockWin ){
+		Scr.ActiveWin = NULL;
+		return;
+	}
 	if( Scr.ActiveWin ){
 		DrawAllDecorations( Scr.ActiveWin, False );
 
