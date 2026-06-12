@@ -17,16 +17,18 @@
 #include "desktop.h"
 #include "dock.h"
 
-#define DOCK_DEFAULT_H     22
-#define DOCK_DEFAULT_ITEM  16
-#define DOCK_DEFAULT_PAD   4
+#define DOCK_DEFAULT_H     36
+#define DOCK_DEFAULT_ITEM  32
+#define DOCK_DEFAULT_PAD   2
 #define DOCK_BORDER        1
 #define DOCK_LABEL_H       0
 #define DOCK_LABEL_PAD     0
 #define DOCK_MAX_ITEMS     64
 #define DOCK_MENU_ITEM_H   22
 #define DOCK_MENU_W        140
-#define DOCK_GRIP_W        10
+#define DOCK_HANDLE_W      12
+#define DOCK_HANDLE_EXTEND 20
+#define DOCK_ARROW_W       10
 #define DOCK_PLATINUM      0xC0C0C0
 #define DOCK_SHADOW        0x808080
 #define DOCK_BLACK         0x000000
@@ -169,9 +171,11 @@ static void dock_item_to_pixmap(DockItem *it) {
 }
 
 static int dock_total_width(void) {
-	return DOCK_GRIP_W + dock_nitems * (Scr.DockItemSize + DOCK_LABEL_PAD * 2) +
-		(dock_nitems - 1) * Scr.DockPadding +
-		DOCK_BORDER * 2;
+	int items_w = dock_nitems * Scr.DockItemSize;
+	int arrows_w = (dock_nitems - 1) * (Scr.DockPadding + DOCK_ARROW_W);
+	if (dock_nitems <= 1) arrows_w = 0;
+	return items_w + arrows_w + Scr.DockPadding * 2 +
+		DOCK_HANDLE_W + DOCK_BORDER * 3;
 }
 
 static void dock_layout(int *out_w, int *out_h) {
@@ -243,59 +247,95 @@ static void dock_rebuild_backing(int w, int h) {
 
 	dock_DrawFrame(dock_backing, w, h);
 
-	/* Mac OS 9 drag grip handle — small raised rectangle with diagonal pattern */
-	int gx = DOCK_BORDER + 1;
-	int gy = (h - 6) / 2;
-	int gw = DOCK_GRIP_W - 2;
-	int gh = 6;
 	XGCValues gcv;
 	unsigned long gcm = GCForeground;
 
-	/* White highlight (top-left) */
+	/* Mac OS 9 vertical pull handle on the right side */
+	int hx = w - DOCK_BORDER * 2 - DOCK_HANDLE_W;
+	int hy = DOCK_BORDER;
+	int hw = DOCK_HANDLE_W;
+	int hh = h - DOCK_BORDER * 2;
+
+	/* Handle background: 1px white highlight, 1px dark shadow, 1px black */
+	gcv.foreground = DOCK_PLATINUM;
+	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
+	XFillRectangle(dpy, dock_backing, dock_text_gc, hx, hy, hw, hh);
+
+	/* White highlight on top and left of handle */
 	gcv.foreground = WhitePixel(dpy, Scr.screen);
 	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, gx, gy + gh - 1, gx + gw - 1, gy + gh - 1);
-	XDrawLine(dpy, dock_backing, dock_text_gc, gx + gw - 1, gy, gx + gw - 1, gy + gh - 1);
+	XDrawLine(dpy, dock_backing, dock_text_gc, hx, hy, hx + hw - 1, hy);
+	XDrawLine(dpy, dock_backing, dock_text_gc, hx, hy, hx, hy + hh - 1);
 
-	/* Dark shadow (bottom-right) */
+	/* Dark shadow on bottom and right of handle */
 	gcv.foreground = DOCK_SHADOW;
 	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	XDrawLine(dpy, dock_backing, dock_text_gc, gx, gy, gx + gw - 1, gy);
-	XDrawLine(dpy, dock_backing, dock_text_gc, gx, gy, gx, gy + gh - 1);
+	XDrawLine(dpy, dock_backing, dock_text_gc, hx, hy + hh - 1, hx + hw - 1, hy + hh - 1);
+	XDrawLine(dpy, dock_backing, dock_text_gc, hx + hw - 1, hy, hx + hw - 1, hy + hh - 1);
 
-	/* Diagonal lines pattern inside grip */
-	gcv.foreground = DOCK_SHADOW;
+	/* Black line just inside shadow */
+	gcv.foreground = DOCK_BLACK;
 	XChangeGC(dpy, dock_text_gc, gcm, &gcv);
-	for (int i = 0; i < gw + gh - 1; i += 2) {
-		int x1 = gx + 1 + i;
-		int y1 = gy + 1;
-		int x2 = gx + 1 + i - (gh - 2);
-		int y2 = gy + gh - 1;
-		if (x2 < gx + 1) continue;
-		if (x1 >= gx + gw - 1) continue;
-		XDrawLine(dpy, dock_backing, dock_text_gc, x1, y1, x2, y2);
+	XDrawLine(dpy, dock_backing, dock_text_gc, hx, hy + hh - 2, hx + hw - 1, hy + hh - 2);
+	XDrawLine(dpy, dock_backing, dock_text_gc, hx + hw - 2, hy, hx + hw - 2, hy + hh - 1);
+
+	/* Handle grip lines (3 horizontal lines centered) */
+	int grip_cy = hy + hh / 2;
+	int grip_x1 = hx + 2;
+	int grip_x2 = hx + hw - 3;
+	for (int i = -2; i <= 2; i += 2) {
+		gcv.foreground = DOCK_BLACK;
+		XChangeGC(dpy, dock_text_gc, gcm, &gcv);
+		XDrawLine(dpy, dock_backing, dock_text_gc,
+			grip_x1, grip_cy + i, grip_x2, grip_cy + i);
 	}
 
-	int x = DOCK_BORDER + DOCK_GRIP_W + Scr.DockPadding / 2;
-	int y = (h - Scr.DockItemSize) / 2;
-	int item_w = Scr.DockItemSize + DOCK_LABEL_PAD * 2;
-	int item_h = Scr.DockItemSize + DOCK_LABEL_PAD * 2 + DOCK_LABEL_H;
+	/* Items: start after left border, end before handle */
+	int content_x = DOCK_BORDER + Scr.DockPadding;
+	int content_y = (h - Scr.DockItemSize) / 2;
+	int content_right = hx - Scr.DockPadding;
+
+	int ix = content_x;
+	int iy = content_y;
 
 	for (DockItem *it = dock_root; it; it = it->next) {
-		dock_paint_item(it, x, y);
-		it->px = x;
-		it->py = y;
-		x += item_w + Scr.DockPadding;
+		/* Check if item fits */
+		if (ix + Scr.DockItemSize > content_right) break;
+
+		/* Draw item */
+		dock_paint_item(it, ix, iy);
+		it->px = ix;
+		it->py = iy;
+		ix += Scr.DockItemSize + Scr.DockPadding;
+
+		/* Draw arrow separator (▶) between items */
+		if (it->next && ix + Scr.DockItemSize <= content_right) {
+			gcv.foreground = DOCK_BLACK;
+			XChangeGC(dpy, dock_text_gc, gcm, &gcv);
+			/* Draw right-pointing triangle arrow */
+			int ax = ix + Scr.DockPadding / 2;
+			int ay = content_y + Scr.DockItemSize / 2;
+			XPoint arrow[3];
+			arrow[0].x = ax;
+			arrow[0].y = ay - 4;
+			arrow[1].x = ax;
+			arrow[1].y = ay + 4;
+			arrow[2].x = ax + 5;
+			arrow[2].y = ay;
+			XFillPolygon(dpy, dock_backing, dock_text_gc,
+				arrow, 3, Convex, CoordModeOrigin);
+			ix += DOCK_ARROW_W;
+		}
 	}
 
 	if (dock_hover_idx >= 0 && dock_hover_idx < dock_nitems) {
 		DockItem *it = dock_root;
 		for (int i = 0; i < dock_hover_idx && it; i++) it = it->next;
 		if (it) {
-			int sx = it->px - 2;
-			int sy = it->py - 2;
-			int sw = Scr.DockItemSize + DOCK_LABEL_PAD * 2 + 4;
-			int sh = Scr.DockItemSize + DOCK_LABEL_PAD * 2 + DOCK_LABEL_H + 4;
+			int sx = it->px - 1;
+			int sy = it->py - 1;
+			int sw = Scr.DockItemSize + 2;
+			int sh = Scr.DockItemSize + 2;
 			dock_paint_selection(sx, sy, sw, sh);
 		}
 	}
@@ -320,7 +360,7 @@ static void dock_create_or_resize(int n) {
 		dock_layout(&w, &h);
 	}
 
-	int x = Scr.MyDisplayWidth - w - 20;
+	int x = 0;
 	int y = Scr.MyDisplayHeight - h;
 	if (x < 0) x = 0;
 	if (y < 0) y = 0;
@@ -352,10 +392,10 @@ static void dock_create_or_resize(int n) {
 }
 
 static int dock_hit(int x, int y) {
-	if (x < DOCK_BORDER + DOCK_GRIP_W || y < DOCK_BORDER) return -1;
-	int rx = x - DOCK_BORDER - DOCK_GRIP_W;
-	int item_w = Scr.DockItemSize + DOCK_LABEL_PAD * 2;
-	int stride = item_w + Scr.DockPadding;
+	if (x < DOCK_BORDER || y < DOCK_BORDER) return -1;
+	int rx = x - DOCK_BORDER;
+	int stride = Scr.DockItemSize + Scr.DockPadding +
+		((dock_nitems > 1) ? (Scr.DockPadding + DOCK_ARROW_W) : 0);
 	if (rx >= dock_nitems * stride - Scr.DockPadding) return -1;
 	int idx = rx / stride;
 	if (idx < 0 || idx >= dock_nitems) return -1;
